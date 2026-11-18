@@ -3,6 +3,8 @@ import './styles.css';
 import {loadWorld} from './map-loader.js';
 import {buildWorld} from './world.js';
 import {createCharacter} from './character.js';
+import {finitePoint, movementDelta, movePlayer, resolveCamera, frameTiming, frameMetrics} from './movement.js';
+import {bindGameControls} from './controls.js';
 const $=id=>document.getElementById(id);
 const mobile=matchMedia('(pointer: coarse)').matches;
 const scene=new THREE.Scene();
@@ -17,13 +19,15 @@ $('game').appendChild(renderer.domElement);
 const world=await loadWorld();
 const stats=buildWorld(scene,world);
 const avatar=createCharacter(scene);
+if(!finitePoint(world.spawn) || !stats.canWalk(...world.spawn)) throw new Error('Invalid or obstructed player spawn');
 avatar.root.position.set(world.spawn[0],0,world.spawn[1]);
 let albumUnlocked=false;
 try{albumUnlocked=localStorage.getItem('game-love-memory-001')==='unlocked';}catch{}
 const inputs={keys:new Set(),joystickX:0,joystickY:0,runTouch:false};
+const cameraSettings={minDistance:5,maxDistance:20,minPitch:.05,maxPitch:.75,yawSensitivity:.006,pitchSensitivity:.003,follow:7,orbit:8};
 const current={yaw:Math.PI*.55,pitch:.25,distance:9.4};
 const cameraTarget=new THREE.Vector3(world.spawn[0],1.5,world.spawn[1]);
-let modalOpen=false,mapOpen=false,lastFps=0,nearMemory=false,frameCounter=0,accum=0;
+let modalOpen=false,mapOpen=false,nearMemory=false,frameCounter=0,accum=0;
 let clock=0;
 const note=world.mode==='osm'?'Geometria de OpenStreetMap (© colaboradores OSM)':'Cenário ilustrativo · execute npm run map:import para obter vias reais';
 $('data-status').textContent=world.mode==='osm'?'● MAPA OSM IMPORTADO':'◌ MODO DEMONSTRAÇÃO';
@@ -36,7 +40,7 @@ function completeMission(){
   $('mission-desc').textContent='Uma lembrança especial já faz parte do seu álbum. Você pode revisitá-la quando quiser.';
   $('mission-state').textContent='✓ CONCLUÍDA'; $('mission-state').classList.add('completed');
 }
-function showModal(html){modalOpen=true;$('modal-content').innerHTML=html;$('modal-layer').classList.remove('hidden');inputs.keys.clear();}
+function showModal(html){modalOpen=true;$('modal-content').innerHTML=html;$('modal-layer').classList.remove('hidden');controls.reset();}
 function closeModal(){modalOpen=false;$('modal-layer').classList.add('hidden');}
 function showMemory(){
   if(!albumUnlocked){albumUnlocked=true;try{localStorage.setItem('game-love-memory-001','unlocked');}catch{}
@@ -54,7 +58,7 @@ function showHelp(){showModal(`<p class="eyebrow">COMO JOGAR</p><h2 id="modal-ti
 function showToast(msg){const el=$('toast');el.textContent=msg;el.classList.remove('hidden');clearTimeout(showToast.timer);showToast.timer=setTimeout(()=>el.classList.add('hidden'),3000);}
 $('modal-close').addEventListener('click',closeModal);$('modal-backdrop').addEventListener('click',closeModal);
 $('btn-album').addEventListener('click',showAlbum);$('btn-help').addEventListener('click',showHelp);
-function toggleMap(force){mapOpen=typeof force==='boolean'?force:!mapOpen;$('map-panel').classList.toggle('hidden',!mapOpen);if(mapOpen)drawMiniMap();}
+function toggleMap(force){mapOpen=typeof force==='boolean'?force:!mapOpen;$('map-panel').classList.toggle('hidden',!mapOpen);if(mapOpen){controls.reset();drawMiniMap();}}
 $('btn-map').addEventListener('click',()=>toggleMap());$('close-map').addEventListener('click',()=>toggleMap(false));
 $('action-btn').addEventListener('click',()=>{if(nearMemory)showMemory();});
 window.addEventListener('keydown',e=>{
@@ -66,21 +70,11 @@ window.addEventListener('keydown',e=>{
   inputs.keys.add(key);
 });
 window.addEventListener('keyup',e=>inputs.keys.delete(e.key.toLowerCase()));
-window.addEventListener('blur',()=>inputs.keys.clear());
-renderer.domElement.addEventListener('wheel',e=>{e.preventDefault();current.distance=Math.min(20,Math.max(5,current.distance+Math.sign(e.deltaY)*1.0));},{passive:false});
-let dragging=false,prevX=0,prevY=0;
-renderer.domElement.addEventListener('pointerdown',e=>{dragging=true;prevX=e.clientX;prevY=e.clientY;renderer.domElement.setPointerCapture(e.pointerId);});
-renderer.domElement.addEventListener('pointermove',e=>{if(!dragging)return;current.yaw-=(e.clientX-prevX)*.006;current.pitch=Math.min(.75,Math.max(.05,current.pitch+(e.clientY-prevY)*.003));prevX=e.clientX;prevY=e.clientY;});
-renderer.domElement.addEventListener('pointerup',()=>dragging=false);renderer.domElement.addEventListener('pointercancel',()=>dragging=false);
-// Mobile analog controls — no external joystick library.
-const joystick=$('joystick'),stick=$('stick');let joystickPointer=null;
-function joystickMove(e){const r=joystick.getBoundingClientRect();const dx=e.clientX-(r.left+r.width/2),dy=e.clientY-(r.top+r.height/2),mag=Math.max(1,Math.hypot(dx,dy));const f=Math.min(1,mag/38);inputs.joystickX=dx/mag*f;inputs.joystickY=-dy/mag*f;stick.style.transform=`translate(${inputs.joystickX*38}px,${-inputs.joystickY*38}px)`;}
-joystick.addEventListener('pointerdown',e=>{joystickPointer=e.pointerId;joystick.setPointerCapture(e.pointerId);joystickMove(e);});
-joystick.addEventListener('pointermove',e=>{if(joystickPointer===e.pointerId)joystickMove(e);});
-function endJoystick(e){if(joystickPointer!==e.pointerId)return;joystickPointer=null;inputs.joystickX=inputs.joystickY=0;stick.style.transform='translate(0px,0px)';}
-joystick.addEventListener('pointerup',endJoystick);joystick.addEventListener('pointercancel',endJoystick);
-$('mobile-run').addEventListener('pointerdown',e=>{inputs.runTouch=true;e.currentTarget.setPointerCapture(e.pointerId);});
-$('mobile-run').addEventListener('pointerup',()=>inputs.runTouch=false);$('mobile-run').addEventListener('pointercancel',()=>inputs.runTouch=false);
+const controls=bindGameControls({canvas:renderer.domElement,joystick:$('joystick'),stick:$('stick'),
+  runButton:$('mobile-run'),inputs,camera:current,settings:cameraSettings,enabled:()=>!modalOpen&&!mapOpen});
+function resetTiming(){controls.reset();previous=performance.now();accum=frameCounter=0;}
+window.addEventListener('blur',resetTiming);
+document.addEventListener('visibilitychange',resetTiming);
 function drawMiniMap(){
   const cnv=$('map-canvas'),ctx=cnv.getContext('2d'),w=cnv.width,h=cnv.height;
   ctx.clearRect(0,0,w,h);ctx.fillStyle='#e5e8d3';ctx.fillRect(0,0,w,h);
@@ -94,38 +88,39 @@ function drawMiniMap(){
   const [mx,my]=xy(world.memory);ctx.beginPath();ctx.arc(mx,my,7,0,Math.PI*2);ctx.fillStyle='#b95164';ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=3;ctx.stroke();
   ctx.beginPath();ctx.arc(w/2,h/2,8,0,Math.PI*2);ctx.fillStyle='#334a43';ctx.fill();ctx.strokeStyle='white';ctx.lineWidth=3;ctx.stroke();
 }
+let cameraInitialized=false;
 let previous=performance.now();
 function animate(now){
-  const dt=Math.min(.05,(now-previous)/1000||0);previous=now;clock+=dt;
+  const timing=frameTiming(now,previous);const dt=timing.simulation;previous=now;clock+=dt;
   let x=(inputs.keys.has('d')||inputs.keys.has('arrowright')?1:0)-(inputs.keys.has('a')||inputs.keys.has('arrowleft')?1:0)+inputs.joystickX;
   let z=(inputs.keys.has('w')||inputs.keys.has('arrowup')?1:0)-(inputs.keys.has('s')||inputs.keys.has('arrowdown')?1:0)+inputs.joystickY;
   if(modalOpen||mapOpen){x=z=0;}
-  const strength=Math.min(1,Math.hypot(x,z));if(strength>0){x/=Math.hypot(x,z);z/=Math.hypot(x,z);}
   const running=inputs.keys.has('shift')||inputs.runTouch;
-  const speed=(running?9:5.1)*strength;
-  const dx=(x*Math.cos(current.yaw)-z*Math.sin(current.y))*speed*dt;
-  const dz=(-x*Math.sin(current.yaw)-z*Math.cos(current.y))*speed*dt;
-  const nx=avatar.root.position.x+dx,nz=avatar.root.position.z+dz;
-  if(stats.canWalk(nx,avatar.root.position.z))avatar.root.position.x=nx;
-  if(stats.canWalk(avatar.root.position.x,nz))avatar.root.position.z=nz;
-  if(speed>.01) {
-    const targetRotation=Math.atan2(-dx,-dz);let diff=(targetRotation-avatar.root.rotation.y+Math.PI*3)%(Math.PI*2)-Math.PI;
-    avatar.root.rotation.y+=diff*Math.min(1,dt*9);
+  const delta=movementDelta(x,z,current.yaw,running?9:5.1,dt);
+  const motion=movePlayer([avatar.root.position.x,avatar.root.position.z],delta,stats.canWalk,dt);
+  if(finitePoint(motion.position))avatar.root.position.set(motion.position[0],0,motion.position[1]);
+  if(motion.heading!==null) {
+    const diff=Math.atan2(Math.sin(motion.heading-avatar.root.rotation.y),Math.cos(motion.heading-avatar.root.rotation.y));
+    avatar.root.rotation.y+=diff*(1-Math.exp(-dt*9));
   }
-  avatar.update(dt,speed);
+  avatar.update(dt,motion.speed);
   stats.markerRoot.userData.animate(clock);
   const target=new THREE.Vector3(avatar.root.position.x,1.48,avatar.root.position.z);
-  cameraTarget.lerp(target,Math.min(1,dt*7));
+  cameraTarget.lerp(target,1-Math.exp(-dt*cameraSettings.follow));
   const horiz=current.distance*Math.cos(current.pitch);
   const desired=new THREE.Vector3(cameraTarget.x+Math.sin(current.yaw)*horiz,cameraTarget.y+2.3+current.distance*Math.sin(current.pitch),cameraTarget.z+Math.cos(current.yaw)*horiz);
-  camera.position.lerp(desired,Math.min(1,dt*8)); camera.lookAt(cameraTarget);
+  if(!cameraInitialized){camera.position.copy(desired);cameraInitialized=true;}
+  else camera.position.lerp(desired,1-Math.exp(-dt*cameraSettings.orbit));
+  // Resolve after smoothing, so interpolation cannot carry the camera through a wall.
+  const safeCamera=resolveCamera([avatar.root.position.x,1.48,avatar.root.position.z],camera.position.toArray(),stats.cameraObstacles);
+  camera.position.fromArray(safeCamera);camera.lookAt(cameraTarget);
   nearMemory=Math.hypot(avatar.root.position.x-world.memory[0],avatar.root.position.z-world.memory[1])<5.3;
   $('action-wrap').classList.toggle('hidden',!nearMemory||modalOpen||mapOpen);
   $('action-label').textContent=albumUnlocked?'Revisitar lembrança':'Descobrir memória';
   $('compass').textContent=(((current.yaw%(Math.PI*2)+Math.PI*2)%(Math.PI*2))<Math.PI/4||((current.yaw%(Math.PI*2)+Math.PI*2)%(Math.PI*2))>Math.PI*1.75)?'N':Math.sin(current.yaw)>0?'O':'L';
-  accum+=dt;frameCounter++;
-  if(accum>.45){lastFps=Math.round(frameCounter/accum);frameCounter=0;accum=0;
-    $('performance').textContent=`${lastFps} FPS`;
+  accum+=timing.real;frameCounter++;
+  if(accum>.45){const metrics=frameMetrics(frameCounter,accum);frameCounter=0;accum=0;
+    $('performance').textContent=`${Math.round(metrics.fps)} FPS · ${metrics.milliseconds.toFixed(1)} ms`;
     $('position-text').textContent=`${Math.round(avatar.root.position.x)}m E · ${Math.round(-avatar.root.position.z)}m N`;
     if(mapOpen)drawMiniMap();
   }

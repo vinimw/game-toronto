@@ -86,7 +86,7 @@ O projeto foi mantido **vanilla Three.js + Vite**, sem framework de interface po
 ## Validação mínima
 
 ```bash
-npm run check:importer
+npm test
 npm run build
 ```
 
@@ -95,3 +95,7 @@ Em desktop e em celular na **mesma rede Wi-Fi**, acesse o endereço IP do comput
 ## Dados, crédito e licenças
 
 O importador usa a [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) para obter informações do [OpenStreetMap](https://www.openstreetmap.org/copyright). **© OpenStreetMap contributors**, dados disponíveis conforme ODbL 1.0. A atribuição é apresentada no jogo no modo OSM. Se redistribuir dados adaptados, verifique suas obrigações segundo a ODbL. Nenhum dado/asset do Google Maps é copiado. O código deste protótipo é original e não reproduz assets do Summer Afternoon, usado apenas como referência de direção artística.
+
+## Estabilização do protótipo
+
+As correções, validações executadas, limitações de hardware e pendências de segurança estão em [Stage 1 — Validation](docs/STAGE_1_VALIDATION.md).

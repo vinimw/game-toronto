@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {createWalkTest, buildingHeight} from './movement.js';
 import {pointInPolygon,nearSegment,seeded} from './geo.js';
 const material=c=>new THREE.MeshLambertMaterial({color:c,side:THREE.DoubleSide});
 function flat(points,height,color){
@@ -22,8 +23,7 @@ function makeBuilding(f,index){
   const points=f.points;
   if(points.length<3)return null;
   const s=new THREE.Shape();points.forEach(([x,z],i)=>i?s.lineTo(x,-z):s.moveTo(x,-z));s.closePath();
-  let h=Number.parseFloat(f.tags?.height);if(!(h>0))h=Math.max(3,Number.parseFloat(f.tags?.['building:levels']||'2')*3.2);
-  h=Math.min(42,h);
+  const h=buildingHeight(f.tags);
   const color=new THREE.Color().setHSL(.07+rand()*.08,.13+rand()*.13,.65+rand()*.13);
   const mesh=new THREE.Mesh(new THREE.ExtrudeGeometry(s,{depth:h,bevelEnabled:false,curveSegments:1,steps:1}),new THREE.MeshLambertMaterial({color}));
   mesh.rotation.x=-Math.PI/2;mesh.receiveShadow=true;mesh.castShadow=false;
@@ -93,6 +93,7 @@ export function buildWorld(scene,world){
   const heart=new THREE.Mesh(new THREE.IcosahedronGeometry(.67,1),new THREE.MeshStandardMaterial({color:0xd56e75,emissive:0x9b3747,emissiveIntensity:.5,metalness:.04,roughness:.4}));heart.position.y=2.05;markerRoot.add(heart);
   const halo=new THREE.Mesh(new THREE.TorusGeometry(.95,.033,6,36),new THREE.MeshBasicMaterial({color:0xffe7ae,transparent:true,opacity:.85}));halo.rotation.x=-Math.PI/2;halo.position.y=.23;markerRoot.add(halo);
   markerRoot.userData.animate=t=>{heart.rotation.y=t*.55;heart.position.y=2.05+Math.sin(t*2)*.18;halo.material.opacity=.35+Math.abs(Math.sin(t*1.5))*.48;};
-  function canWalk(x,z){const b=world.bbox||[-1000,-1000,1000,1000];return x>b[0]+2&&x<b[2]-2&&z>b[1]+2&&z<b[3]-2&&!blocked([x,z]);}
-  return {canWalk,markerRoot,trees,counts:{paths:paths.length,buildings:buildings.length,water:waters.length,trees}};
+  const canWalk=createWalkTest(world.features,world.bbox||[-1000,-1000,1000,1000]);
+  const cameraObstacles=buildings.map(f=>({points:f.points,height:buildingHeight(f.tags)}));
+  return {canWalk,cameraObstacles,markerRoot,trees,counts:{paths:paths.length,buildings:buildings.length,water:waters.length,trees}};
 }

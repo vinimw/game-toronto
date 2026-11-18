@@ -1,0 +1,66 @@
+// Each surface owns one pointer. A second finger cannot replace an active drag.
+export function bindGameControls({canvas, joystick, stick, runButton, inputs, camera, settings, enabled}) {
+  let cameraPointer = null, joystickPointer = null, runPointer = null;
+  let previousX = 0, previousY = 0;
+  const listen = (element, type, callback) => element.addEventListener(type, callback, type === 'wheel' ? {passive:false} : undefined);
+  const capture = (element, event) => { event.preventDefault(); element.setPointerCapture(event.pointerId); };
+  function reset() {
+    inputs.keys.clear();
+    inputs.joystickX = inputs.joystickY = 0;
+    inputs.runTouch = false;
+    stick.style.transform = 'translate(0px,0px)';
+    for (const [element, pointer] of [[canvas,cameraPointer],[joystick,joystickPointer],[runButton,runPointer]]) {
+      if (pointer !== null && element.hasPointerCapture(pointer)) element.releasePointerCapture(pointer);
+    }
+    cameraPointer = joystickPointer = runPointer = null;
+  }
+  listen(canvas, 'pointerdown', e => {
+    if (!enabled() || cameraPointer !== null || e.button !== 0) return;
+    cameraPointer = e.pointerId; previousX = e.clientX; previousY = e.clientY; capture(canvas, e);
+  });
+  listen(canvas, 'pointermove', e => {
+    if (cameraPointer !== e.pointerId || !enabled()) return;
+    const dx = e.clientX - previousX, dy = e.clientY - previousY;
+    if (Number.isFinite(dx) && Number.isFinite(dy)) {
+      camera.yaw = (camera.yaw - dx * settings.yawSensitivity) % (Math.PI * 2);
+      camera.pitch = Math.min(settings.maxPitch, Math.max(settings.minPitch, camera.pitch + dy * settings.pitchSensitivity));
+    }
+    previousX = e.clientX; previousY = e.clientY;
+  });
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) listen(canvas, type, e => {
+    if (cameraPointer === e.pointerId) cameraPointer = null;
+  });
+  listen(canvas, 'wheel', e => {
+    e.preventDefault();
+    if (enabled() && Number.isFinite(e.deltaY)) camera.distance = Math.min(settings.maxDistance,
+      Math.max(settings.minDistance, camera.distance + Math.sign(e.deltaY)));
+  });
+  listen(canvas, 'contextmenu', e => e.preventDefault());
+  function moveJoystick(e) {
+    const r = joystick.getBoundingClientRect();
+    const dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+    if (![dx, dy].every(Number.isFinite)) return;
+    const magnitude = Math.max(38, Math.hypot(dx, dy));
+    inputs.joystickX = dx / magnitude; inputs.joystickY = -dy / magnitude;
+    stick.style.transform = `translate(${inputs.joystickX * 38}px,${-inputs.joystickY * 38}px)`;
+  }
+  listen(joystick, 'pointerdown', e => {
+    if (!enabled() || joystickPointer !== null) return;
+    joystickPointer = e.pointerId; capture(joystick, e); moveJoystick(e);
+  });
+  listen(joystick, 'pointermove', e => {
+    if (joystickPointer === e.pointerId && enabled()) moveJoystick(e);
+  });
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) listen(joystick, type, e => {
+    if (joystickPointer !== e.pointerId) return;
+    joystickPointer = null; inputs.joystickX = inputs.joystickY = 0; stick.style.transform = 'translate(0px,0px)';
+  });
+  listen(runButton, 'pointerdown', e => {
+    if (!enabled() || runPointer !== null) return;
+    runPointer = e.pointerId; inputs.runTouch = true; capture(runButton, e);
+  });
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) listen(runButton, type, e => {
+    if (runPointer === e.pointerId) { runPointer = null; inputs.runTouch = false; }
+  });
+  return {reset};
+}
