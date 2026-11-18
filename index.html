@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no"/>
+  <meta name="theme-color" content="#e9e1cb" />
+  <meta name="description" content="Game Love — um passeio de descobertas por Toronto"/>
+  <title>Game Love · High Park</title>
+</head>
+<body>
+  <main id="app">
+    <div id="game" aria-label="Cenário tridimensional de High Park"></div>
+    <header class="topbar">
+      <div class="brand"><span class="brand-heart">♥</span><div><span class="brand-name">GAME LOVE</span><span class="brand-sub">TORONTO · HIGH PARK</span></div></div>
+      <div class="header-actions">
+        <button id="btn-help" class="small-button" aria-label="Ajuda">?</button>
+        <button id="btn-map" class="small-button" aria-label="Mostrar mapa">⌖ <span class="desktop-only">Mapa</span></button>
+        <button id="btn-album" class="small-button album-button" aria-label="Abrir álbum">♡ <span class="desktop-only">Memórias</span> <span id="album-count">0/1</span></button>
+      </div>
+    </header>
+    <div class="scene-tag"><span class="sun-icon">✺</span> UMA TARDE EM TORONTO</div>
+    <section id="mission-card" class="mission-card" aria-live="polite">
+      <p class="eyebrow">01 / SUA PRIMEIRA MISSÃO</p>
+      <h1 id="mission-title">Uma pequena descoberta</h1>
+      <p id="mission-desc">Caminhe pelo parque e procure o ponto luminoso entre as árvores.</p>
+      <span id="mission-state" class="mission-state">◌ EM ANDAMENTO</span>
+    </section>
+    <div class="compass" id="compass">N</div>
+    <div class="side-rail"><span class="rail-label">EXPLORAR · DESCOBRIR · LEMBRAR</span></div>
+    <div id="action-wrap" class="action-wrap hidden"><button id="action-btn" class="action-btn"><span class="action-key">E</span><span id="action-label">Descobrir memória</span></button></div>
+    <div class="bottom-left"><div class="place-label"><span class="place-dot"></span><div><strong id="place-name">High Park, Toronto</strong><small id="position-text">Explorando...</small></div></div></div>
+    <div id="mobile-controls" class="mobile-controls"><div class="joystick" id="joystick"><div id="stick" class="joystick-stick"></div></div><button id="mobile-run" class="run-button" aria-label="Correr">↟</button></div>
+    <footer class="footer-bar"><span id="data-status">Carregando cenário...</span><span id="performance">— FPS</span><span class="desktop-only">WASD mover · Mouse olhar · Shift correr · E interagir · M mapa · I álbum</span></footer>
+    <div id="modal-layer" class="modal-layer hidden"><div class="modal-backdrop" id="modal-backdrop"></div><section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title"><button id="modal-close" class="close-button" aria-label="Fechar">×</button><div id="modal-content"></div></section></div>
+    <section id="map-panel" class="map-panel hidden"><div class="map-heading"><div><p class="eyebrow">MAPA LOCAL</p><h2>High Park</h2></div><button id="close-map" class="close-button">×</button></div><canvas id="map-canvas" width="540" height="400"></canvas><div class="map-key"><span><i class="key-dot player"></i> Você</span><span><i class="key-dot memory"></i> Memória</span><span><i class="key-dot road"></i> Caminhos</span></div><p id="map-note" class="map-note">Mapa ilustrativo</p></section>
+    <div id="toast" class="toast hidden" role="status"></div>
+  </main>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

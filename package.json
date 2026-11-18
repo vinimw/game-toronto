@@ -1,0 +1,19 @@
+{
+  "name": "game-love-high-park",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "map:import": "python3 tools/import_osm.py",
+    "check:importer": "python3 -m unittest discover -s tools -p 'test_*.py'"
+  },
+  "dependencies": {
+    "three": "0.187.0"
+  },
+  "devDependencies": {
+    "vite": "^7.1.0"
+  }
+}
