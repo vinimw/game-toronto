@@ -36,31 +36,57 @@ test('raw-source comparison detects a missing building and a shifted Three.js st
 });
 
 test('OSM visual details respect path clearance and quality reduces nearby detail',async()=>{
-  const {nearSegment}=await import('../src/geo.js');
-  const {pathWidth}=await import('../src/visual-settings.js');
+  const {nearSegment,pointInPolygon}=await import('../src/geo.js');
+  const {pathWidth,realPathAppearance}=await import('../src/visual-settings.js');
   const data=JSON.parse(await readFile(new URL('../public/data/high-park.osm.json',import.meta.url)));
   const world=prepareHighParkMap(data),scene=new THREE.Scene();
-  const stats=buildWorld(scene,world);
+  const widths=[];
+  const stats=buildWorld(scene,world,[],{
+    polygon(){},
+    strip(feature,mesh,start,end){
+      if(feature.tags.highway!=='footway'||start===end)return;
+      const vertices=mesh.geometry.getAttribute('position');
+      widths.push({feature,width:Math.hypot(vertices.getX(start)-vertices.getX(start+1),
+        vertices.getZ(start)-vertices.getZ(start+1))});
+    },
+  });
   try{
     const venue=scene.getObjectByName('high-park-nature-centre');
     assert.ok(venue?.children[1].geometry.index.count>0);
     assert.ok(!stats.canWalk(108,131));
     const vegetation=['trunk','shrub','grass','flower'].map(kind=>scene.getObjectByName('park:'+kind));
     const routes=world.features.filter(feature=>feature.kind==='path');
+    const lawns=world.features.filter(feature=>feature.tags.landuse==='grass');
     const transform=new THREE.Matrix4();
+    assert.ok(widths.length>0);
+    for(const {feature,width} of widths){
+      assert.ok(Math.abs(width-realPathAppearance(feature).width)<.001);
+      assert.ok(width<pathWidth(feature));
+    }
     for(const batch of vegetation){
       assert.ok(batch?.count>0);
       for(let i=0;i<batch.count;i++){
         batch.getMatrixAt(i,transform);
         const point=[transform.elements[12],transform.elements[14]];
+        assert.ok(stats.canWalk(...point,0));
         for(const f of routes)for(let j=1;j<f.points.length;j++)
-          assert.ok(nearSegment(point,f.points[j-1],f.points[j])>=pathWidth(f)/2);
+          assert.ok(nearSegment(point,f.points[j-1],f.points[j])>=Math.max(pathWidth(f),realPathAppearance(f).width)/2);
+        if(batch===vegetation[0]){
+          for(const {points} of lawns.filter(f=>pointInPolygon(point,f.points))){
+            assert.ok(points.some((p,i)=>nearSegment(point,p,points[(i+1)%points.length])<8.001));
+          }
+        }
       }
     }
+    const distribution=stats.vegetationMetrics();
+    assert.equal(distribution.procedural,true);
+    assert.equal(distribution.placed.trees,vegetation[0].count);
+    assert.equal(distribution.grid.treeCounts.flat().reduce((a,b)=>a+b,0),vegetation[0].count);
     const grass=scene.getObjectByName('park:grass'),full=grass.count;
     stats.setQuality('low');
     stats.setDetailFocus(...world.spawn);
     assert.ok(grass.count<full*.32);
+    assert.equal(stats.vegetationMetrics().detailInstancesEnabled.grass,grass.count);
     stats.setQuality('high');
     stats.setDetailFocus();
     assert.equal(grass.count,full);

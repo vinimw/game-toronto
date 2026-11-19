@@ -34,7 +34,9 @@ export function buildWorld(scene,world,portals=[],evidence){
   const greens=world.features.filter(f=>f.kind==='green'),paths=world.features.filter(f=>f.kind==='path'||f.kind==='rail');
   const buildings=world.features.filter(f=>f.kind==='building'),waters=world.features.filter(f=>f.kind==='water');
   for(const feature of greens){
-    const mesh=flat(feature.points,-.025,feature.tags?.landuse==='forest'?style.woodland:style.meadow);
+    const wooded=feature.tags?.landuse==='forest'||(real&&feature.tags?.natural==='wood');
+    const height=real&&feature.tags?.landuse==='grass'?-.021:real&&wooded?-.023:-.025;
+    const mesh=flat(feature.points,height,wooded?style.woodland:style.meadow);
     worldUVs(mesh.geometry,true);mesh.material.map=texture;scene.add(mesh);
     evidence?.polygon(feature,mesh);
   }
@@ -43,7 +45,7 @@ export function buildWorld(scene,world,portals=[],evidence){
     evidence?.polygon(feature,mesh);
   });
   addPathBatches(scene,paths,style,pathWidth,texture,evidence?.strip,real);
-  const furniture=[],cameraObstacles=[];
+  const furniture=[],cameraObstacles=[],clearings=[];
   buildings.forEach((feature,index)=>{
     if(world.mode==='demo'&&feature.visual==='park-cafe'){
       const cafe=buildDemoCafe(feature);
@@ -53,6 +55,7 @@ export function buildWorld(scene,world,portals=[],evidence){
       const centre=buildNatureCentre(feature);scene.add(centre.group);
       evidence?.polygon(feature,centre.roof);
       cameraObstacles.push({points:feature.points,height:centre.height});
+      if(centre.forecourt)clearings.push(centre.forecourt);
     }else{
       const mesh=makeBuilding(feature,index);
       if(mesh){scene.add(mesh);evidence?.polygon(feature,mesh.children[1]);}
@@ -62,10 +65,10 @@ export function buildWorld(scene,world,portals=[],evidence){
   cameraObstacles.push(...furniture);
   const collisionFeatures=furniture.length?[...world.features,...furniture]:world.features;
   const canWalk=createWalkTest(collisionFeatures,world.bbox||[-1000,-1000,1000,1000]);
+  if(furniture.length)clearings.push([60,114.5,10]);
   const vegetation=world.vegetation===false?{trees:0,cameraVolumes:[],setQuality(){}}:
-    plantPark(scene,world,portals,(point,radius)=>!canWalk(point[0],point[1],radius),
-      furniture.length?[[60,114.5,10]]:[]);
-  const {trees,cameraVolumes,setQuality,setDetailFocus}=vegetation;
+    plantPark(scene,world,portals,(point,radius)=>!canWalk(point[0],point[1],radius),clearings);
+  const {trees,cameraVolumes,setQuality,setDetailFocus,vegetationMetrics}=vegetation;
   // Ground deco around memory: simple warm glow / recognizable interaction point.
   let markerRoot=null;
   if(world.memory&&world.mode!=='osm'){
@@ -91,5 +94,6 @@ export function buildWorld(scene,world,portals=[],evidence){
     ]});
     cameraVolumes.push({center:[px,3.3,pz],radii:[1.8,.2,.18]});
   }
-  return {canWalk,cameraObstacles,cameraVolumes,setQuality,setDetailFocus,markerRoot,trees,counts:{paths:paths.length,buildings:buildings.length,water:waters.length,trees}};
+  return {canWalk,cameraObstacles,cameraVolumes,setQuality,setDetailFocus,vegetationMetrics,markerRoot,trees,
+    counts:{paths:paths.length,buildings:buildings.length,water:waters.length,trees}};
 }

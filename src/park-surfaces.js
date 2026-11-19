@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {seeded} from './geo.js';
+import {realPathAppearance} from './visual-settings.js';
 
 // Small repeating texture with broad color variation and fine grain. It changes
 // only surface color: elevations and imported geometry stay in the data layer.
@@ -63,7 +64,7 @@ function appendJoins(vertices,points,width,height){
   }
 }
 
-export function addPathBatches(scene,paths,style,pathWidth,texture,onGeometry,joinBends=false){
+export function addPathBatches(scene,paths,style,pathWidth,texture,onGeometry,real=false){
   const batches=new Map(), featherPositions=[], featherColors=[];
   const evidence=onGeometry?new Map():null;
   const add=(points,width,height,color)=>{
@@ -73,14 +74,16 @@ export function addPathBatches(scene,paths,style,pathWidth,texture,onGeometry,jo
     return {start:start/3,end:vertices.length/3};
   };
   for(const feature of paths){
-    const width=pathWidth(feature);
-    const color=feature.kind==='rail'?style.rail:
+    const appearance=real?realPathAppearance(feature):null;
+    const width=appearance?.width??pathWidth(feature);
+    const color=real?style[appearance.surface]:feature.kind==='rail'?style.rail:
       width>=4 && !['pedestrian','living_street'].includes(feature.tags?.highway)?style.road:style.trail;
     const road=color!==style.trail;
-    add(feature.points,width+(road?.36:.22),.023,style.verge);
-    if(!road)appendFeather(feature.points,width,featherPositions,featherColors);
-    const strip=add(feature.points,width,.032,color);
-    if(joinBends)appendJoins(batches.get(color),feature.points,width,.031);
+    const height=real?(appearance.crossing?.035:road?.033:.031):.032;
+    if(!real)add(feature.points,width+(road?.36:.22),.023,style.verge);
+    if(real?appearance.softEdge:!road)appendFeather(feature.points,width,featherPositions,featherColors,real);
+    const strip=add(feature.points,width,height,color);
+    if(real)appendJoins(batches.get(color),feature.points,width,height-.0006);
     if(evidence){
       if(!evidence.has(color))evidence.set(color,[]);
       evidence.get(color).push({feature,...strip});
@@ -104,23 +107,24 @@ export function addPathBatches(scene,paths,style,pathWidth,texture,onGeometry,jo
   }
 }
 
-function appendFeather(points,width,positions,colors){
+function appendFeather(points,width,positions,colors,real=false){
   for(let i=1;i<points.length;i++){
     const [ax,az]=points[i-1],[bx,bz]=points[i];
     const dx=bx-ax,dz=bz-az,length=Math.hypot(dx,dz);
     if(length<.05)continue;
     const slices=Math.min(72,Math.ceil(length/2.65));
     for(const side of [-1,1]){
-      const nx=-dz/length*side,nz=dx/length*side,edge=width/2+.08;
+      const nx=-dz/length*side,nz=dx/length*side,edge=width/2+(real?-.035:.08);
       const outer=t=>edge+.31+.13*Math.sin((ax+dx*t)*1.11+(az+dz*t)*.74+side);
       const add=(t,offset,alpha)=>{
         positions.push(ax+dx*t+nx*offset,.024,az+dz*t+nz*offset);
         colors.push(1,1,1,alpha);
       };
+      const opacity=real?.62:.83;
       for(let j=0;j<slices;j++){
         const a=j/slices,b=(j+1)/slices;
-        add(a,edge,.83);add(a,outer(a),0);add(b,edge,.83);
-        add(a,outer(a),0);add(b,outer(b),0);add(b,edge,.83);
+        add(a,edge,opacity);add(a,outer(a),0);add(b,edge,opacity);
+        add(a,outer(a),0);add(b,outer(b),0);add(b,edge,opacity);
       }
     }
   }

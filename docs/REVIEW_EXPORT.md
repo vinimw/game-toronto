@@ -16,13 +16,15 @@ O pacote fica em `artifacts/reviews/game-love-review.zip`, e a cópia aberta do 
 | Arquivo | Conteúdo |
 | --- | --- |
 | `metadata.json` | Data UTC, versão Git e indicador de alterações locais, build, testes, navegador, enquadramentos, origem, coordenadas e pontos indisponíveis |
-| `performance.json` | FPS, média e p95 do intervalo bruto entre quadros, chamadas de desenho, triângulos, contagens do renderer e tempo de carregamento |
+| `performance.json` | FPS, média e p95 do intervalo bruto entre quadros, chamadas de desenho, triângulos, contagens do renderer, tempo de carregamento e distribuição da vegetação procedural no High Park OSM |
 | `console-errors.json` | Exceções JavaScript, promises rejeitadas, falhas HTTP ou de rede em recursos e erros de captura |
 | `geographic-correspondence.json` | Extensão, hash da fonte, divergências por ID, cruzamentos, rota, limites e versão Git |
 | `screenshots/` | Seis vistas padronizadas mais referência e sobreposição OSM quando o recorte é carregado |
 | `geography/high-park-north.osm-source.json.gz` | Resposta de origem arquivada, com SHA-256 do JSON descompactado no relatório |
 
 A medição usa 75 amostras brutas de `requestAnimationFrame`, depois de 15 intervalos de aquecimento. A cena fica estática. O tempo de carregamento abrange dados, construção e ativação pelo `SceneManager`, e o mesmo valor aparece para os pontos que reutilizam a cena já carregada. As contagens de memória incluem geometrias e texturas do renderer, em unidades de recurso. FPS e frame time dependem da máquina, do navegador e da aceleração gráfica. Eles não substituem testes em celular físico.
+
+No High Park OSM, `vegetation.placed` enumera a vegetação procedural do recorte. `vegetation.grid` organiza árvores e instâncias de arbustos em quadrículas de norte para sul e de oeste para leste. `detailInstancesEnabled` informa quantas instâncias de detalhe foram habilitadas pelo perfil e pelo raio da câmera antes do descarte do renderer. O perfil está em `metadata.json`.
 
 ## Pontos e origem geográfica
 

@@ -159,8 +159,10 @@ async function measure(id){
   intervals.sort((a,b)=>a-b);
   const mean=intervals.reduce((sum,ms)=>sum+ms,0)/intervals.length;
   const {calls,triangles}=renderer.info.render;
+  const vegetation=manager.active.stats.vegetationMetrics?.();
   return {fps:mean>0?1000/mean:null,frameTimeMeanMs:mean,frameTimeP95Ms:intervals[Math.ceil(intervals.length*.95)-1],
     samples:intervals.length,drawCalls:calls,triangles,rendererMemory:{...renderer.info.memory},
+    ...(vegetation?{vegetation}:{}),
     sceneLoadMs,sceneLoadScope:'SceneManager.load: dados, construção e ativação; reutilizado nos pontos da mesma cena.'};
 }
 

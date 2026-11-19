@@ -7,7 +7,7 @@ const eave=3.3;
 // existing OSM outline. Intersect its triangulation with each ridge/eave line.
 const profile=p=>p[1]+.122*(p[0]-105);
 const ridges=[117.3,122.9,130.8];
-const levels=[3.3,4.85,3.3,4.25,3.3];
+const levels=[3.3,4.72,3.3,4.18,3.3];
 const cuts=[113,...ridges,138.5];
 function roofY(p){
   const v=profile(p);
@@ -58,15 +58,16 @@ function roofMesh(ring){
   const geometry=new THREE.BufferGeometry();
   geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
   geometry.setIndex(indices);geometry.computeVertexNormals();
-  return new THREE.Mesh(geometry,new THREE.MeshLambertMaterial({color:0x414641,flatShading:true,side:THREE.DoubleSide}));
+  return new THREE.Mesh(geometry,new THREE.MeshLambertMaterial({color:0x484b43,flatShading:true,side:THREE.DoubleSide}));
 }
 
 export function buildNatureCentre(feature){
   const ring=feature.points.slice(0,-1), positions=[],colors=[];
+  let forecourt;
   const group=new THREE.Group();
   group.name='high-park-nature-centre';
   const winding=Math.sign(THREE.ShapeUtils.area(ring.map(([x,z])=>new THREE.Vector2(x,z))));
-  const wood=[0x6d4936,0x79533c,0x77503a,0x835a41];
+  const wood=[0x73503d,0x795440,0x76523e,0x7d5741];
   const trim=0xd6c4a0, glass=0x455a53, door=0x405a4c;
   function quad(a,b,c,d,color){
     const {r,g,b:blue}=new THREE.Color(color);
@@ -80,7 +81,8 @@ export function buildNatureCentre(feature){
     const at=(u,y,depth=0)=>[a[0]+dx*u+nx*depth,y,a[1]+dz*u+nz*depth];
     const panel=(u0,u1,lo,hi,tint,depth=0)=>quad(at(u0,lo,depth),at(u1,lo,depth),at(u1,hi,depth),at(u0,hi,depth),tint);
 
-    panel(0,1,0,.47,0x85594a);
+    panel(0,1,-.027,.11,0x655749);
+    panel(0,1,.11,.47,0x85594a);
     for(let j=0;j<10;j++){
       const lo=.47+(eave-.47)*j/10,hi=.47+(eave-.47)*(j+1)/10;
       panel(0,1,lo,hi,wood[(i*7+j*3+Math.floor(j/3))%wood.length]);
@@ -94,20 +96,23 @@ export function buildNatureCentre(feature){
       const topP=roofY([p[0],p[2]]),topQ=roofY([q[0],q[2]]);
       if(topP>eave||topQ>eave)quad(p,q,at(v,topQ),at(u,topP),wood[i%wood.length]);
     }
-    panel(0,1,eave-.12,eave,0x3f3c32,.014);
+    panel(0,1,eave-.13,eave-.055,0x4d4639,.014);
+    panel(0,1,eave-.055,eave,0x353b32,.022);
     if(length<2.4)continue;
 
     const westEntry=(a[0]+b[0])/2<85;
+    if(westEntry)forecourt=[(a[0]+b[0])/2-8,(a[1]+b[1])/2,8];
     const count=Math.min(8,Math.max(1,Math.floor(length/2.05)));
     for(let j=0;j<count;j++){
       const u=(j+.5)/count;
       const entrance=westEntry&&j===Math.floor(count/2);
-      const half=(entrance?.75:.65)/length,lo=entrance?.08:1.03,hi=entrance?2.52:2.58;
+      const half=(entrance?.75:.65)/length,lo=entrance?.08:1.03,hi=entrance?2.58:2.52;
       panel(u-half,u+half,lo,hi,trim,.025);
       const inset=.083/length;
       panel(u-half+inset,u+half-inset,lo+.08,hi-.08,entrance?door:glass,.042);
       if(entrance){
         panel(u-half+.17/length,u+half-.17/length,1.35,hi-.18,glass,.052);
+        panel(u-half,u+half,.05,.12,0x6f6451,.044);
       }else{
         panel(u-.032/length,u+.032/length,lo+.06,hi-.06,trim,.052);
         panel(u-half+inset,u+half-inset,1.94,2.00,trim,.052);
@@ -122,5 +127,5 @@ export function buildNatureCentre(feature){
   const walls=new THREE.Mesh(geometry,new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide}));
   const roof=roofMesh(ring);
   group.add(walls,roof);
-  return {group,roof,height:Math.max(...levels)};
+  return {group,roof,height:Math.max(...levels),forecourt};
 }
