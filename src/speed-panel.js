@@ -7,6 +7,7 @@ export function bindSpeedPanel(root,player,{minimized=false,onFocus=()=>{}}={}){
   const slider=root.querySelector('input'),badge=root.querySelector('[data-multiplier]');
   const configured=root.querySelector('[data-configured]'),actual=root.querySelector('[data-actual]');
   const toggle=root.querySelector('[data-toggle]'),body=root.querySelector('[data-body]');
+  const chevron=root.querySelector('[data-chevron]');
   const minus=root.querySelector('[data-minus]'),plus=root.querySelector('[data-plus]');
   const format=value=>value.toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1});
   function render(){
@@ -19,7 +20,8 @@ export function bindSpeedPanel(root,player,{minimized=false,onFocus=()=>{}}={}){
   function collapse(value){
     body.hidden=value;toggle.setAttribute('aria-expanded',String(!value));
     toggle.setAttribute('aria-label',value?'Expandir controle de velocidade':'Minimizar controle de velocidade');
-    toggle.textContent=value?'⌄':'⌃';
+    chevron.textContent=value?'⌄':'⌃';
+    root.dataset.collapsed=String(value);
   }
   root.addEventListener('focusin',onFocus);
   slider.addEventListener('input',()=>{player.setMultiplier(Number(slider.value));render();});
@@ -30,6 +32,7 @@ export function bindSpeedPanel(root,player,{minimized=false,onFocus=()=>{}}={}){
   render();collapse(minimized);
   let lastSpeed=null;
   return {
+    setCollapsed:collapse,
     shortcut(event){const direction=speedShortcut(event);if(!direction)return false;event.preventDefault();player.setMultiplier(player.multiplier+direction*.5);render();return true;},
     update(speed){
       const value=format(Number.isFinite(speed)?speed:0);

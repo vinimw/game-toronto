@@ -41,15 +41,15 @@ test('shortcuts do not hijack browser zoom or text/slider editing',()=>{
   assert.equal(speedShortcut({key:'w'}),0);
 });
 class Element extends EventTarget {
-  attributes={};hidden=false;value='';textContent='';disabled=false;
+  attributes={};dataset={};hidden=false;value='';textContent='';disabled=false;
   setAttribute(key,value){this.attributes[key]=value;}
 }
 test('slider, buttons, minimize and output stay synchronized without persistence',()=>{
-  const selectors=['input','[data-multiplier]','[data-configured]','[data-actual]','[data-toggle]','[data-body]','[data-minus]','[data-plus]','[data-normal]'];
+  const selectors=['input','[data-multiplier]','[data-configured]','[data-actual]','[data-toggle]','[data-chevron]','[data-body]','[data-minus]','[data-plus]','[data-normal]'];
   const nodes=Object.fromEntries(selectors.map(s=>[s,new Element()]));
   const root=new Element();root.querySelector=s=>nodes[s];
   const player=new PlayerController(),panel=bindSpeedPanel(root,player,{minimized:true});
-  assert.equal(nodes['[data-body]'].hidden,true);
+  assert.equal(nodes['[data-body]'].hidden,true);assert.equal(root.dataset.collapsed,'true');
   nodes['[data-toggle]'].dispatchEvent(new Event('click'));assert.equal(nodes['[data-body]'].hidden,false);
   nodes.input.value='3.5';nodes.input.dispatchEvent(new Event('input'));assert.equal(player.multiplier,3.5);
   nodes['[data-plus]'].dispatchEvent(new Event('click'));assert.equal(player.multiplier,4);

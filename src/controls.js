@@ -42,7 +42,8 @@ export function bindGameControls({canvas, joystick, stick, runButton, inputs, ca
     if (![dx, dy].every(Number.isFinite)) return;
     const magnitude = Math.max(38, Math.hypot(dx, dy));
     inputs.joystickX = dx / magnitude; inputs.joystickY = -dy / magnitude;
-    stick.style.transform = `translate(${inputs.joystickX * 38}px,${-inputs.joystickY * 38}px)`;
+    const travel = Math.min(38, Math.min(r.width, r.height) * .29);
+    stick.style.transform = `translate(${inputs.joystickX * travel}px,${-inputs.joystickY * travel}px)`;
   }
   listen(joystick, 'pointerdown', e => {
     if (!enabled() || joystickPointer !== null) return;
