@@ -1,5 +1,5 @@
 // Each surface owns one pointer. A second finger cannot replace an active drag.
-export function bindGameControls({canvas, joystick, stick, runButton, inputs, camera, settings, enabled}) {
+export function bindGameControls({canvas, joystick, stick, runButton, inputs, camera, settings, enabled, onCameraInput=()=>{}}) {
   let cameraPointer = null, joystickPointer = null, runPointer = null;
   let previousX = 0, previousY = 0;
   const listen = (element, type, callback) => element.addEventListener(type, callback, type === 'wheel' ? {passive:false} : undefined);
@@ -22,8 +22,11 @@ export function bindGameControls({canvas, joystick, stick, runButton, inputs, ca
     if (cameraPointer !== e.pointerId || !enabled()) return;
     const dx = e.clientX - previousX, dy = e.clientY - previousY;
     if (Number.isFinite(dx) && Number.isFinite(dy)) {
-      camera.yaw = (camera.yaw - dx * settings.yawSensitivity) % (Math.PI * 2);
-      camera.pitch = Math.min(settings.maxPitch, Math.max(settings.minPitch, camera.pitch + dy * settings.pitchSensitivity));
+      const yawDelta = -dx * settings.yawSensitivity;
+      const pitch = Math.min(settings.maxPitch, Math.max(settings.minPitch, camera.pitch + dy * settings.pitchSensitivity));
+      if (yawDelta || pitch !== camera.pitch) onCameraInput(yawDelta);
+      camera.yaw = (camera.yaw + yawDelta) % (Math.PI * 2);
+      camera.pitch = pitch;
     }
     previousX = e.clientX; previousY = e.clientY;
   });
@@ -32,8 +35,12 @@ export function bindGameControls({canvas, joystick, stick, runButton, inputs, ca
   });
   listen(canvas, 'wheel', e => {
     e.preventDefault();
-    if (enabled() && Number.isFinite(e.deltaY)) camera.distance = Math.min(settings.maxDistance,
-      Math.max(settings.minDistance, camera.distance + Math.sign(e.deltaY)));
+    if (enabled() && Number.isFinite(e.deltaY)) {
+      const distance = Math.min(settings.maxDistance,
+        Math.max(settings.minDistance, camera.distance + Math.sign(e.deltaY)));
+      if (distance !== camera.distance) onCameraInput(0);
+      camera.distance = distance;
+    }
   });
   listen(canvas, 'contextmenu', e => e.preventDefault());
   function moveJoystick(e) {
