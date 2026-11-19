@@ -1,7 +1,6 @@
 export const cameraSettings={
   distance:7, pitch:.23, minDistance:3.5, maxDistance:24, minPitch:.08, maxPitch:.82,
   yawSensitivity:.006, pitchSensitivity:.003, follow:10, orbit:11, clearanceRecovery:6,
-  autoFollowEnabled:true, followSmoothness:4.2, manualOverrideDelay:1.5, rotationSmoothness:9,
 };
 
 export const qualityProfiles={

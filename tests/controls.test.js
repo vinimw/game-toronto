@@ -13,10 +13,9 @@ function setup(){
   const canvas=new Surface(),joystick=new Surface(),stick=new Surface(),runButton=new Surface();
   const inputs={keys:new Set(),joystickX:0,joystickY:0,runTouch:false},camera={yaw:0,pitch:.25,distance:9};
   let active=true;
-  const cameraInputs=[];
   const controls=bindGameControls({canvas,joystick,stick,runButton,inputs,camera,
-    settings:{yawSensitivity:.006,pitchSensitivity:.003,minPitch:.05,maxPitch:.75,minDistance:5,maxDistance:20},enabled:()=>active,onCameraInput:delta=>cameraInputs.push(delta)});
-  return {canvas,joystick,runButton,inputs,camera,cameraInputs,controls,disable:()=>active=false};
+    settings:{yawSensitivity:.006,pitchSensitivity:.003,minPitch:.05,maxPitch:.75,minDistance:5,maxDistance:20},enabled:()=>active});
+  return {canvas,joystick,runButton,inputs,camera,controls,disable:()=>active=false};
 }
 test('joystick and camera accept different fingers simultaneously',()=>{
   const s=setup();s.joystick.send('pointerdown',{pointerId:10,clientY:12});
@@ -42,19 +41,4 @@ test('camera clamps pitch and zoom and ignores inactive or unrelated drags',()=>
   s.canvas.send('pointermove',{clientY:5000});assert.equal(s.camera.pitch,.75);
   for(let i=0;i<30;i++)s.canvas.send('wheel',{deltaY:1});assert.equal(s.camera.distance,20);
   s.disable();s.canvas.send('pointermove',{clientX:100});assert.equal(s.camera.yaw,0);
-});
-
-
-test('only effective manual camera input announces an override',()=>{
-  const s=setup();
-  s.canvas.send('pointerdown',{pointerId:8});
-  s.canvas.send('pointermove',{pointerId:8});
-  s.canvas.send('pointermove',{pointerId:2,clientX:90});
-  assert.deepEqual(s.cameraInputs,[]);
-  s.canvas.send('pointermove',{pointerId:8,clientX:90});
-  s.canvas.send('pointermove',{pointerId:8,clientX:90,clientY:60});
-  s.canvas.send('wheel',{deltaY:1});
-  assert.equal(s.cameraInputs[0],-.24);
-  assert.ok(s.cameraInputs.slice(1).every(delta=>delta===0));
-  assert.equal(s.cameraInputs.length,3);
 });

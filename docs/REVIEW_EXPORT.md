@@ -138,10 +138,3 @@ A comparação marca visualmente HUDs com estados ou versões de layout
 diferentes. Os pares incompatíveis conservam as imagens lado a lado
 para inspeção e omitem deltas de desempenho. O relatório principal
 continua usando imagens relativas depois da extração.
-
-O teste de gameplay também executa um deslocamento lateral em cada
-região após capturar o HUD. Ele exige rotação da personagem e da câmera
-e mede o desvio transversal com a tecla ou o joystick mantido.
-As medidas ficam em `metadata.json`, em `checks.touch.viewports`.
-As poses das capturas padronizadas continuam sendo definidas em
-`tools/review/points.js`.

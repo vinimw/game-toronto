@@ -110,33 +110,11 @@ async function captureLayout(browser,url,dir,layout,safeMessage){
     await page.waitForFunction(()=>document.querySelector('#game canvas')?.dataset.reviewPose);
     const client=layout.touch?await page.context().newCDPSession(page):null;
     const dispatch=(type,touchPoints=[])=>client.send('Input.dispatchTouchEvent',{type,touchPoints});
-    const joystickPoint=async(dx=0,dy=-31)=>{
+    const joystickPoint=async()=>{
       const joy=await page.locator('#joystick').boundingBox();
       assert.ok(joy,'Joystick ausente');
-      return {id:1,x:joy.x+joy.width/2+dx,y:joy.y+joy.height/2+dy};
+      return {id:1,x:joy.x+joy.width/2,y:joy.y+joy.height/2-31};
     };
-    async function verifyDirectionChange(){
-      const before=await readPose();
-      if(layout.touch)await dispatch('touchStart',[await joystickPoint(31,0)]);
-      else await page.keyboard.down('d');
-      try{
-        await page.waitForFunction(before=>{
-          const pose=JSON.parse(document.querySelector('#game canvas').dataset.reviewPose);
-          const angle=(a,b)=>Math.abs(Math.atan2(Math.sin(b-a),Math.cos(b-a)));
-          const [x,,z]=pose.position.local,[startX,,startZ]=before.position.local;
-          return Math.hypot(x-startX,z-startZ)>1&&angle(before.orbit.yaw,pose.orbit.yaw)>.35&&
-            angle(before.position.headingRadians,pose.position.headingRadians)>.7;
-        },before,{timeout:1400});
-        const after=await readPose();
-        const [x,,z]=after.position.local,[startX,,startZ]=before.position.local;
-        const drift=Math.abs((x-startX)*Math.sin(before.orbit.yaw)+(z-startZ)*Math.cos(before.orbit.yaw));
-        assert.ok(drift<.08,'A rotação automática desviou a trajetória lateral');
-        return {distanceMeters:displacement(before.position.local,after.position.local),crossTrackMeters:drift};
-      }finally{
-        if(layout.touch)await dispatch('touchEnd');
-        else await page.keyboard.up('d');
-      }
-    }
     const start=(await readPose()).position.local;
     if(layout.touch)await dispatch('touchStart',[await joystickPoint()]);
     else await page.keyboard.down('w');
@@ -216,11 +194,9 @@ async function captureLayout(browser,url,dir,layout,safeMessage){
     assert.ok(await page.locator('#game').evaluate(element=>element.inert));
     await click('#modal-close');
     await waitAction('Voltar a Toronto');
-    summary.cameraFollow={highPark:await verifyDirectionChange()};
     await click('#action-btn');await waitScene('toronto');await waitAction('Entrar no High Park');
     await take(14);
     summary.roundTrip=true;
-    summary.cameraFollow.toronto=await verifyDirectionChange();
 
     if(layout.touch){
       const before=await readPose();
