@@ -14,11 +14,18 @@ npm run review:compare -- --baseline /caminho/do/game-love-review-anterior.zip
 ```
 
 O comando publica `artifacts/reviews/comparison/report.html`, um resumo
-`comparison.json` e pranchas SVG lado a lado. Para incluir a comparação
+`comparison.json` e imagens lado a lado no HTML. Para incluir a comparação
 no próprio ZIP e no HTML do novo export, use
 `npm run review:export -- --baseline /caminho/do/game-love-review-anterior.zip`.
-Guarde a referência em outro caminho antes de exportar, pois o ZIP
-padrão é substituído a cada execução.
+A referência é copiada para uma área temporária. O relatório registra o
+SHA-256 dessa cópia e lê a data e o commit diretamente do
+`metadata.json` arquivado, mesmo quando o ZIP já contém uma comparação.
+Use um caminho diferente do ZIP de saída. O exportador recusa sobrescrever
+o arquivo escolhido como referência.
+
+Extraia o ZIP e abra `report.html` ao lado das pastas de imagens.
+O relatório local usa caminhos relativos e funciona offline. Para um
+HTML único opcional, acrescente `--standalone` ao export ou à comparação.
 
 O exportador usa o Chromium do Playwright quando instalado e tenta o Google Chrome local em seguida. Para baixar o Chromium, execute `npx playwright-core install chromium`. Para selecionar outro binário compatível, use `REVIEW_BROWSER_PATH=/caminho/do/chromium npm run review:export`.
 
@@ -32,10 +39,10 @@ O pacote fica em `artifacts/reviews/game-love-review.zip`, e a cópia aberta do 
 | `performance.json` | FPS, média e p95 do intervalo bruto entre quadros, chamadas de desenho, triângulos, contagens do renderer, tempo de carregamento e distribuição da vegetação procedural no High Park OSM |
 | `console-errors.json` | Exceções JavaScript, promises rejeitadas, falhas HTTP ou de rede em recursos e erros de captura |
 | `geographic-correspondence.json` | Extensão, hash da fonte, divergências por ID, cruzamentos, rota, limites e versão Git |
-| `screenshots/` | Seis vistas padronizadas mais referência e sobreposição OSM quando o recorte é carregado |
+| `screenshots/` | Vistas padronizadas, três capturas do jogo mobile com HUD, referência e sobreposição OSM |
 | `geography/high-park-north.osm-source.json.gz` | Resposta de origem arquivada, com SHA-256 do JSON descompactado no relatório |
-| `report.html` | Relatório offline com imagens embutidas, métricas, geografia, ocorrências e comparação opcional |
-| `comparison.json` e `comparisons/` | Resumo e pranchas dos pares quando fornecido `--baseline` |
+| `report.html` | Relatório offline com imagens relativas, métricas, geografia, ocorrências e comparação opcional |
+| `comparison.json` e `comparisons/` | Identidade da referência, compatibilidade por ID e cópia única das imagens anteriores necessárias |
 
 A medição usa 75 amostras brutas de `requestAnimationFrame`, depois de 15 intervalos de aquecimento. A cena fica estática. O tempo de carregamento abrange dados, construção e ativação pelo `SceneManager`, e o mesmo valor aparece para os pontos que reutilizam a cena já carregada. As contagens de memória incluem geometrias e texturas do renderer, em unidades de recurso. FPS e frame time dependem da máquina, do navegador e da aceleração gráfica. Eles não substituem testes em celular físico.
 
@@ -58,6 +65,14 @@ série e descreve o Nature Centre como local especial. A ortográfica mantém no
 para cima e o metadado distingue a bbox dos dados da extensão visível da câmera.
 Os dados DEMO têm origem ilustrativa. Coordenadas intermediárias só são convertidas
 para referência geográfica quando o modo é OSM REAL.
+
+As vistas 14–16 usam a página real do jogo em Chromium com toque emulado.
+O teste integrado aciona o joystick, verifica deslocamento e entra no
+High Park pelo botão real. Os quadros mostram a entrada e a saída com
+HUD, e o mapa local aberto em uma vista separada. O jogo bloqueia o
+botão de interação enquanto o mapa está aberto. A sessão usa fontes de
+sistema para funcionar offline. Essas vistas registram a pose efetiva
+da câmera de gameplay e são separadas do benchmark estático.
 
 As vistas 09–11 detalham vegetação, transição trilha–grama e Nature
 Centre. As vistas 12–13 usam uma sessão Chromium com viewport 390 × 844,

@@ -13,6 +13,7 @@ import {bindGameControls} from './controls.js';
 import {PlayerController} from './player-controller.js';
 import {bindSpeedPanel} from './speed-panel.js';
 const $=id=>document.getElementById(id);
+const reviewCapture=import.meta.env.DEV&&new URLSearchParams(location.search).get('review')==='1';
 const mobile=matchMedia('(pointer: coarse)').matches;
 let world,stats,note;
 const camera=new THREE.PerspectiveCamera(53,innerWidth/innerHeight,.1,1600);
@@ -203,6 +204,15 @@ function animate(now){
   // Development-only DOM diagnostics for repeated-transition GPU resource checks.
   if(import.meta.env.DEV)renderer.domElement.dataset.resources=JSON.stringify({...renderer.info.memory,
     region:manager.active.id,objects:manager.active.scene.children.length,calls:renderer.info.render.calls,triangles:renderer.info.render.triangles,avatars:manager.active.scene.children.filter(o=>o===avatar.root).length});
+  if(reviewCapture)renderer.domElement.dataset.reviewPose=JSON.stringify({
+    sceneId:manager.active.scene.name,origin:world.mode==='osm'?'OSM REAL':'DEMO',
+    sourceSha256:world.sourceSha256??null,bboxWgs84:world.bboxWgs84??null,geographicOrigin:world.origin??null,
+    position:{local:avatar.root.position.toArray(),headingRadians:avatar.root.rotation.y},
+    camera:{projection:camera.type,position:camera.position.toArray(),quaternion:camera.quaternion.toArray(),
+      fovDegrees:camera.fov},
+    graphics:{profile:quality,...qualityProfiles[quality],pixelRatio:renderer.getPixelRatio(),antialias:!mobile},
+    resolution:{width:renderer.domElement.width,height:renderer.domElement.height},
+  });
 }
 renderer.setAnimationLoop(animate);
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});

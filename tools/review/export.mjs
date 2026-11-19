@@ -11,6 +11,7 @@ import {reviewPipelineVersion,reviewProfiles} from './profiles.js';
 import {motionDurationMs} from './motion-benchmark.js';
 import {buildComparison,openReviewZip,writeComparisons} from './compare.mjs';
 import {writeReport} from './report.mjs';
+import {captureMobileGameplay,gameplayCaptures} from './mobile-gameplay.mjs';
 
 const root=fileURLToPath(new URL('../../',import.meta.url));
 const output=join(root,'artifacts/reviews');
@@ -235,8 +236,7 @@ async function publish(stage,bundle,archive){
 }
 
 async function main(){
-  const {values:{baseline}}=parseArgs({options:{baseline:{type:'string'}}});
-  const prior=baseline?openReviewZip(resolve(baseline)):null;
+  const {values:{baseline,standalone}}=parseArgs({options:{baseline:{type:'string'},standalone:{type:'boolean'}}});
   await mkdir(output,{recursive:true});
   const lock=join(output,'.export-lock');
   try {await mkdir(lock);}catch(error){
@@ -247,6 +247,7 @@ async function main(){
   try {
     stage=await mkdtemp(join(output,'.stage-'));
     const bundle=join(stage,'report'),archive=join(stage,'game-love-review.zip');
+    const prior=baseline?await openReviewZip(resolve(baseline),stage,{outputZip:join(output,'game-love-review.zip')}):null;
     await mkdir(join(bundle,'screenshots'),{recursive:true});
     const git={commit:version(['rev-parse','HEAD']),dirty:null};
     const changes=version(['status','--porcelain']);
@@ -263,9 +264,11 @@ async function main(){
     abort.signal.throwIfAborted();
     const desktop=await collectProfile(browser,started.target,bundle,'desktop');
     const mobile=await collectProfile(browser,started.target,bundle,'mobile');
+    const gameplay=await captureMobileGameplay(browser,started.target,bundle,safeMessage);
+    checks.touch=gameplay.touch;
     const {geography,geographicFiles,motion}=desktop;
-    const captures=[...desktop.captures,...mobile.captures];
-    const issues=[...desktop.issues,...mobile.issues];
+    const captures=[...desktop.captures,...mobile.captures,...gameplay.captures];
+    const issues=[...desktop.issues,...mobile.issues,...gameplay.issues];
     const metrics=[...desktop.metrics,...mobile.metrics];
     abort.signal.throwIfAborted();
     geography.git=git;
@@ -274,7 +277,7 @@ async function main(){
     const success=captures.filter(c=>c.status==='captured').length;
     const unavailable=captures.filter(c=>c.status==='unavailable').length;
     const failed=captures.length-success-unavailable;
-    const partial=success!==points.length||geographicFiles.length!==3||
+    const partial=success!==points.length+gameplayCaptures.length||geographicFiles.length!==3||
       geography.cartography?.status!=='within-tolerance'||geography.navigation?.status!=='passed'||
       motion?.status!=='passed'||Object.values(checks).some(check=>check.status!=='passed')||
       issues.some(issue=>!issue.expected);
@@ -293,12 +296,14 @@ async function main(){
     const current={metadata,performance,readImage:file=>readFile(join(bundle,file))};
     const comparison=prior?await buildComparison(prior,current):null;
     const comparisonFiles=comparison?await writeComparisons(bundle,comparison):[];
-    await writeReport(join(bundle,'report.html'),{metadata,performance,geography,issues,imageFiles,
-      readImage:current.readImage,comparison});
+    const reportData={metadata,performance,geography,issues,imageFiles,readImage:current.readImage,comparison};
+    await writeReport(join(bundle,'report.html'),reportData);
+    const standaloneFiles=standalone?['report-standalone.html']:[];
+    if(standalone)await writeReport(join(bundle,standaloneFiles[0]),{...reportData,standalone:true});
 
     // Explicit allowlist. Nothing outside this staging directory can enter the archive.
     const files=['metadata.json','performance.json','console-errors.json','geographic-correspondence.json',
-      'report.html',...geographicFiles,...captures.flatMap(capture=>capture.file?[capture.file]:[]),...comparisonFiles];
+      'report.html',...standaloneFiles,...geographicFiles,...captures.flatMap(capture=>capture.file?[capture.file]:[]),...comparisonFiles];
     if((await run('zip',['-q','-X',archive,...files],{cwd:bundle})).code!==0)
       throw new Error('Falha ao criar o ZIP.');
     if((await run('unzip',['-tq',archive],{quiet:true})).code!==0)

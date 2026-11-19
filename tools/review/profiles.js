@@ -1,4 +1,4 @@
-export const reviewPipelineVersion='2.0.0';
+export const reviewPipelineVersion='2.1.0';
 
 export const reviewProfiles={
   desktop:{

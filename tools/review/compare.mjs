@@ -1,20 +1,36 @@
 import {execFileSync} from 'node:child_process';
-import {mkdir,writeFile} from 'node:fs/promises';
+import {copyFile,mkdir,readFile,realpath,writeFile} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
 import {join} from 'node:path';
 import {isDeepStrictEqual} from 'node:util';
-import {escapeHtml,imageData} from './report.mjs';
+import {imageData} from './report.mjs';
 
 const imagePath=/^screenshots\/[a-z0-9][a-z0-9-]*\.png$/;
 const zipOptions={maxBuffer:24*1024*1024,timeout:15000,stdio:['ignore','pipe','ignore']};
 
-export function openReviewZip(zip){
+export async function openReviewZip(source,stage,{outputZip}={}){
+  const input=await realpath(source);
+  const destination=outputZip?await realpath(outputZip).catch(error=>{
+    if(error.code!=='ENOENT')throw error;
+    return outputZip;
+  }):null;
+  if(input===destination)throw new Error('O baseline é o ZIP de saída. Copie-o para outro caminho antes de exportar.');
+  const zip=join(stage,'baseline.zip');
+  await copyFile(input,zip);
+  const archiveSha256=createHash('sha256').update(await readFile(zip)).digest('hex');
   const files=execFileSync('unzip',['-Z','-1',zip],zipOptions).toString().trimEnd().split('\n');
   const read=file=>{
     if(files.filter(name=>name===file).length!==1)throw new Error('Entrada ausente ou duplicada no ZIP: '+file);
     return execFileSync('unzip',['-p',zip,file],zipOptions);
   };
+  const metadata=JSON.parse(read('metadata.json'));
+  if(!Array.isArray(metadata.captures)||!Object.hasOwn(metadata.git??{},'commit')||
+    typeof metadata.exportedAt!=='string'||!Number.isFinite(Date.parse(metadata.exportedAt)))
+    throw new Error('metadata.json do baseline sem identificação válida do export.');
+  evidenceCaptures(metadata);
   return {
-    metadata:JSON.parse(read('metadata.json')),
+    archiveSha256,
+    metadata,
     performance:JSON.parse(read('performance.json')),
     readImage(file){
       if(!imagePath.test(file))throw new Error('Nome de imagem inválido.');
@@ -26,7 +42,7 @@ export function openReviewZip(zip){
 const comparableFields=[
   ['origin','origem'],['sceneId','cena'],['position','posição ou orientação da personagem'],
   ['camera','câmera'],['graphics','configuração gráfica'],['viewport','viewport'],['resolution','resolução'],
-  ['sourceSha256','hash OSM'],['bboxWgs84','bbox OSM'],['geographicOrigin','origem cartográfica'],
+  ['captureMode','modo de captura'],['hud','estado do HUD'],['sourceSha256','hash OSM'],['bboxWgs84','bbox OSM'],['geographicOrigin','origem cartográfica'],
 ];
 const measureFields=['drawCalls','triangles','frameTimeMeanMs','frameTimeP50Ms','frameTimeP95Ms','sceneLoadMs'];
 // Normalize the live pose as JSON would, so that -0 from a matrix matches a pose read from a ZIP.
@@ -52,7 +68,13 @@ function evidenceCaptures(metadata){
     return {...pose,id,label:id.startsWith('07')?'Referência OSM':'Sobreposição cartográfica',file,
       evidenceType:'cartography',status:'captured'};
   });
-  return new Map([...metadata.captures,...evidence].map(capture=>[capture.id,capture]));
+  const byId=new Map();
+  for(const capture of [...metadata.captures,...evidence]){
+    if(typeof capture.id!=='string'||!/^\d{2}-[a-z0-9-]+$/.test(capture.id)||byId.has(capture.id))
+      throw new Error('Identificador de captura inválido ou duplicado: '+String(capture.id));
+    byId.set(capture.id,capture);
+  }
+  return byId;
 }
 
 export async function buildComparison(before,after){
@@ -76,7 +98,10 @@ export async function buildComparison(before,after){
     let images;
     try{
       if(!imagePath.test(a.file)||!imagePath.test(b.file))throw new Error('Imagem inválida.');
-      images=await Promise.all([before.readImage(a.file),after.readImage(b.file)]).then(items=>items.map(imageData));
+      const [baselineImage,currentImage]=await Promise.all([before.readImage(a.file),after.readImage(b.file)]);
+      imageData(baselineImage,{validateOnly:true});imageData(currentImage,{validateOnly:true});
+      images={baseline:'comparisons/'+id+'.png',current:b.file};
+      base.baselineImage=baselineImage;
     }catch{
       reasons.push('Arquivo de imagem ausente ou inválido');
     }
@@ -92,40 +117,24 @@ export async function buildComparison(before,after){
   }
   const motionFields=['fps','durationMs','distanceMeters','frameTimeMeanMs','frameTimeP50Ms','frameTimeP95Ms','drawCallsMean','trianglesMean'];
   const flatMotion=m=>({...m,drawCallsMean:m?.drawCalls?.mean,trianglesMean:m?.triangles?.mean});
-  return {baseline:{git:before.metadata.git,pipelineVersion:before.metadata.pipelineVersion??null},
+  return {baseline:{git:before.metadata.git,exportedAt:before.metadata.exportedAt??null,
+      archiveSha256:before.archiveSha256??null,pipelineVersion:before.metadata.pipelineVersion??null},
     current:{git:after.metadata.git,pipelineVersion:after.metadata.pipelineVersion??null},environment,
     motion:{reasons:motionReasons,metrics:motionReasons.length?{}:deltas(flatMotion(first),flatMotion(second),motionFields)},
     captures};
 }
 
 export async function writeComparisons(dir,comparison){
-  const folder='comparisons',files=[];
-  await mkdir(join(dir,folder),{recursive:true});
-  const summarized=comparison.captures.map(({images,...capture})=>{
-    if(!images||!/^\d{2}-[a-z0-9-]+$/.test(capture.id))return capture;
-    const file=folder+'/'+capture.id+'.svg';
-    files.push(file);
-    return {...capture,file};
-  });
-  const getDimensions=data=>{
-    const bytes=Buffer.from(data.slice(data.indexOf(',')+1),'base64');
-    return [bytes.readUInt32BE(16),bytes.readUInt32BE(20)];
-  };
-  for(const [index,capture] of summarized.entries()){
-    if(!capture.file)continue;
-    const images=comparison.captures[index].images;
-    const [a,b]=images.map(getDimensions);
-    const width=a[0]+b[0],height=Math.max(a[1],b[1])+30;
-    const svg='<svg xmlns="http://www.w3.org/2000/svg" width="'+width+'" height="'+height+'">'+
-      '<rect width="100%" height="100%" fill="#f1eee4"/>'+
-      '<text x="12" y="21" font-family="sans-serif">Referência</text>'+
-      '<text x="'+(a[0]+12)+'" y="21" font-family="sans-serif">'+
-      escapeHtml(capture.status==='comparable'?'Atual':'Atual · configuração diferente')+'</text>'+
-      '<image y="30" width="'+a[0]+'" height="'+a[1]+'" href="'+images[0]+'"/>'+
-      '<image x="'+a[0]+'" y="30" width="'+b[0]+'" height="'+b[1]+'" href="'+images[1]+'"/></svg>';
-    await writeFile(join(dir,capture.file),svg);
+  const files=['comparison.json'];
+  await mkdir(join(dir,'comparisons'),{recursive:true});
+  const captures=[];
+  for(const {baselineImage,...capture} of comparison.captures){
+    if(baselineImage){
+      await writeFile(join(dir,capture.images.baseline),baselineImage);
+      files.push(capture.images.baseline);
+    }
+    captures.push(capture);
   }
-  const summary='comparison.json';
-  await writeFile(join(dir,summary),JSON.stringify({...comparison,captures:summarized},null,2)+'\n');
-  return [summary,...files];
+  await writeFile(join(dir,'comparison.json'),JSON.stringify({...comparison,captures},null,2)+'\n');
+  return files;
 }
