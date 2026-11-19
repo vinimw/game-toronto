@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a real-geometry High Park snapshot from OSM Overpass.
+"""Build a real-geometry High Park snapshot from the archived OSM Map API response.
 
 No Google Maps data, tiles or copyrighted imagery are scraped.
 The output contains simplified geographic features in local meters (east, south).
@@ -8,69 +8,21 @@ Copyright © OpenStreetMap contributors, licensed ODbL 1.0.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import pathlib
 import sys
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
 
-DEFAULT_BBOX = (43.6450, -79.4728, 43.6535, -79.4565)  # south, west, north, east
-OVERPASS_SERVERS = [
-    "https://overpass.kumi.systems/api/interpreter",
-    "https://overpass-api.de/api/interpreter",
-    "https://overpass.nchc.org.tw/api/interpreter",
-]
+DEFAULT_BBOX = (43.65055, -79.467485, 43.65415, -79.462515)  # south, west, north, east
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "public" / "data" / "high-park.osm.json"
 
 
-def overpass_query(bbox: tuple[float, float, float, float]) -> str:
-    s, w, n, e = bbox
-    bounds = f"({s},{w},{n},{e})"
-    return f'''[out:json][timeout:75];
-(
-  way["highway"]{bounds};
-  way["building"]{bounds};
-  way["railway"~"^(tram|subway|rail)$"]{bounds};
-  way["natural"="water"]{bounds};
-  way["waterway"="riverbank"]{bounds};
-  way["landuse"~"^(forest|grass|meadow|recreation_ground)$"]{bounds};
-  way["leisure"~"^(park|garden|nature_reserve)$"]{bounds};
-  way["natural"="wood"]{bounds};
-);
-out geom;'''
-
-
-def download_osm(query: str) -> dict:
-    payload = urllib.parse.urlencode({"data": query}).encode()
-    errors = []
-    for endpoint in OVERPASS_SERVERS:
-        try:
-            print(f"Consultando {endpoint} ...", flush=True)
-            req = urllib.request.Request(endpoint, data=payload, headers={
-                "User-Agent": "GameLoveTorontoPrototype/0.1 (OpenStreetMap; local developer import)",
-                "Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
-                "Accept": "application/json",
-            })
-            with urllib.request.urlopen(req, timeout=110) as resp:
-                raw = resp.read()
-            result = json.loads(raw)
-            if not isinstance(result.get("elements"), list):
-                raise RuntimeError("Resposta da API sem lista de elementos")
-            return result
-        except (OSError, ValueError, RuntimeError) as exc:
-            errors.append(f"{endpoint}: {exc}")
-            time.sleep(1)
-    raise RuntimeError("Não foi possível obter dados da API Overpass:\n" + "\n".join(errors))
-
-
-def project(lat: float, lon: float, center: dict[str, float]) -> list[float]:
+def project(lat: float, lon: float, center: dict[str, float], *, rounded=True) -> list[float]:
     x = (lon - center["lon"]) * 111_320 * math.cos(math.radians(center["lat"]))
     z = -(lat - center["lat"]) * 111_320
-    return [round(x, 2), round(z, 2)]
+    return [round(x, 2), round(z, 2)] if rounded else [x, z]
 
 
 def is_closed(points: list[list[float]]) -> bool:
@@ -78,7 +30,7 @@ def is_closed(points: list[list[float]]) -> bool:
 
 
 def classify(tags: dict, closed: bool) -> str | None:
-    if tags.get("building") and closed:
+    if tags.get("building") not in (None, "no") and closed:
         return "building"
     if closed and (tags.get("natural") == "water" or tags.get("waterway") == "riverbank"):
         return "water"
@@ -126,19 +78,125 @@ def convert(raw: dict, bbox: tuple[float, float, float, float]) -> dict:
     }
 
 
+def clip_line(points, bounds):
+    """Liang–Barsky per segment, retaining disconnected parts in source order."""
+    west, north, east, south = bounds
+    parts = []
+    for a, b in zip(points, points[1:]):
+        dx, dz = b[0] - a[0], b[1] - a[1]
+        start, end = 0., 1.
+        for p, q in [(-dx, a[0]-west), (dx, east-a[0]), (-dz, a[1]-north), (dz, south-a[1])]:
+            if p < 0:
+                start = max(start, q/p)
+            elif p > 0:
+                end = min(end, q/p)
+            elif q < 0:
+                end = -1
+        if start >= end:
+            continue
+        first = a if start == 0 else [a[0]+dx*start, a[1]+dz*start]
+        last = b if end == 1 else [a[0]+dx*end, a[1]+dz*end]
+        if parts and parts[-1][-1] == first:
+            parts[-1].append(last)
+        else:
+            parts.append([first, last])
+    return parts
+
+
+def clip_polygon(points, bounds):
+    """Intersect a simple exterior ring with the four rectangle boundaries."""
+    ring = points[:-1] if points[0] == points[-1] else points
+    for axis, edge, sign in [(0,bounds[0],1),(1,bounds[1],1),(0,bounds[2],-1),(1,bounds[3],-1)]:
+        if not ring:
+            return []
+        output = []
+        for a, b in zip(ring[-1:] + ring[:-1], ring):
+            inside_a, inside_b = (a[axis]-edge)*sign >= 0, (b[axis]-edge)*sign >= 0
+            if inside_a != inside_b:
+                t = (edge-a[axis])/(b[axis]-a[axis])
+                intersection = [a[j]+(b[j]-a[j])*t for j in range(2)]
+                intersection[axis] = edge
+                output.append(intersection)
+            if inside_b:
+                output.append(b)
+        ring = output
+    return [ring+[ring[0]]] if len(ring) >= 3 else []
+
+
+def convert_api(raw, source_bytes, bbox):
+    """Normalize the archived OSM Map API response, using its original node IDs."""
+    expected = tuple(raw['bounds'][key] for key in ('minlat','minlon','maxlat','maxlon'))
+    if expected != bbox:
+        raise ValueError('BBox deve coincidir com o recorte exato do arquivo de origem')
+    origin = {'lat': round((bbox[0]+bbox[2])/2, 7), 'lon': round((bbox[1]+bbox[3])/2, 7)}
+    lo, hi = project(*bbox[:2], origin, rounded=False), project(*bbox[2:], origin, rounded=False)
+    bounds = [lo[0], hi[1], hi[0], lo[1]]
+    nodes = {element['id']: element for element in raw['elements'] if element['type'] == 'node'}
+    features, clipped, missing, skipped_relations = [], [], [], []
+    for element in raw['elements']:
+        tags, osm_id = element.get('tags', {}), element['id']
+        if element['type'] == 'relation':
+            if tags.get('type') == 'multipolygon':
+                skipped_relations.append(osm_id)
+            continue
+        if element['type'] != 'way':
+            continue
+        ids = element.get('nodes', [])
+        if len(ids) < 2:
+            continue
+        kind = classify(tags, len(ids) >= 4 and ids[0] == ids[-1])
+        if kind is None:
+            if any(key in tags for key in ('building','natural','waterway','landuse','leisure','highway')):
+                missing.append({'id':osm_id,'reason':'classe não renderizada ou contorno aberto'})
+            continue
+        if any(node_id not in nodes for node_id in ids):
+            missing.append({'id':osm_id,'reason':'nós ausentes na origem'})
+            continue
+        if tags.get('tunnel') in ('yes','building_passage') or tags.get('highway') == 'proposed':
+            missing.append({'id':osm_id,'reason':'geometria subterrânea ou proposta'})
+            continue
+        geographic = [[nodes[n]['lon'], nodes[n]['lat']] for n in ids]
+        points = [project(lat, lon, origin, rounded=False) for lon, lat in geographic]
+        parts = (clip_line if kind in ('path','rail') else clip_polygon)(points, bounds)
+        if not parts:
+            missing.append({'id':osm_id,'reason':'sem geometria no interior do recorte'})
+            continue
+        if parts != [points]:
+            clipped.append(osm_id)
+        for part, vertices in enumerate(parts, 1):
+            rounded = [[round(x, 2),round(z, 2)] for x,z in vertices]
+            if len({tuple(point) for point in rounded}) < (2 if kind in ('path','rail') else 3):
+                continue
+            features.append({'kind':kind,'osmType':'way','osmId':osm_id,'part':part,
+                             'name':tags.get('name',''),'tags':tags,'points':rounded})
+    counts = {kind:len({f['osmId'] for f in features if f['kind']==kind})
+              for kind in ('path','building','green','water','rail')}
+    return {
+        'version':2,'mode':'osm','dataset':'high-park-north','origin':origin,'bbox':[round(value, 2) for value in bounds],
+        'bboxWgs84':list(bbox),'extractedAt':raw['extractedAt'],'sourceUrl':raw['sourceUrl'],
+        'sourceSha256':hashlib.sha256(source_bytes).hexdigest(),'source':'© OpenStreetMap contributors',
+        'license':'ODbL 1.0 - https://www.openstreetmap.org/copyright',
+        'features':features,
+        'coverage':{'waysByClass':counts,'clippedWayIds':clipped,'omittedWays':missing,
+                    'unrenderedMultipolygonIds':skipped_relations},
+    }
+
+
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Importar vias e construções reais de High Park (Toronto) usando Overpass")
+    ap = argparse.ArgumentParser(description="Importar vias e construções reais de High Park (Toronto) usando a resposta arquivada da API OSM")
     ap.add_argument("--bbox", metavar=("S", "W", "N", "E"), type=float, nargs=4, default=DEFAULT_BBOX,
                     help="Limites geográficos: latitude sul, longitude oeste, latitude norte, longitude leste")
-    ap.add_argument("--input", type=pathlib.Path, help="Ler arquivo JSON bruto do Overpass local, sem internet")
+    ap.add_argument("--input", type=pathlib.Path, help="Ler recorte JSON arquivado da API OSM, sem internet")
+    ap.set_defaults(input=ROOT / "tools" / "data" / "high-park-north.osm-source.json")
     ap.add_argument("--output", type=pathlib.Path, default=OUTPUT)
     args = ap.parse_args()
     south, west, north, east = args.bbox
     if not (-90 <= south < north <= 90 and -180 <= west < east <= 180):
         ap.error("BBox inválida; esperado: sul oeste norte leste")
     try:
-        raw = json.loads(args.input.read_text()) if args.input else download_osm(overpass_query(tuple(args.bbox)))
-        output = convert(raw, tuple(args.bbox))
+        source_bytes = args.input.read_bytes()
+        raw = json.loads(source_bytes)
+        output = convert_api(raw, source_bytes, tuple(args.bbox))
         if len(output["features"]) < 20:
             raise RuntimeError(f"Poucas feições retornadas ({len(output['features'])}). Verifique a bbox ou a API.")
         args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -149,7 +207,7 @@ def main() -> int:
         print(f"Mapa criado: {args.output} ({args.output.stat().st_size/1024:.0f} KB)")
         print(f"Total: {len(output['features'])} elementos | {summary}")
         print("Fonte: © OpenStreetMap contributors (ODbL 1.0)")
-    except (OSError, ValueError, RuntimeError) as exc:
+    except (OSError, ValueError, KeyError, RuntimeError) as exc:
         print(f"ERRO: {exc}", file=sys.stderr)
         return 1
     return 0

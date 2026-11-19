@@ -32,3 +32,34 @@ test('actual demo builds finite geometry and supports a walk to the existing mem
     }
   });
 });
+
+test('real High Park portal lands on OSM sidewalk and movement remains within the mapped scene',async()=>{
+  const {readFile}=await import('node:fs/promises');
+  const {prepareHighParkMap,pedestrianPath}=await import('../src/map-loader.js');
+  const {nearestOnPath}=await import('../src/geo.js');
+  const {SceneManager}=await import('../src/scene-manager.js');
+  const {regionManifest}=await import('../src/regions.js');
+  const {makeTorontoWorld}=await import('../src/scenes/toronto.js');
+  const source=JSON.parse(await readFile(new URL('../public/data/high-park.osm.json',import.meta.url)));
+  const world=prepareHighParkMap(source);
+  assert.throws(()=>prepareHighParkMap({...source,sourceSha256:null}),/proveniência/);
+  const avatar=createCharacter(new THREE.Group());
+  const manager=new SceneManager({manifest:regionManifest,avatar,buildScene:buildWorld,
+    loadRegion:async definition=>definition.id==='high-park'?world:makeTorontoWorld(definition)});
+  await manager.load('toronto','high-park-gate');
+  assert.equal(await manager.travel('toronto:high-park-gate'),true);
+  const {stats}=manager.active;
+  const [x,,z]=avatar.root.position.toArray();
+  assert.ok(nearestOnPath([x,z],world.features,f=>pedestrianPath(f)&&f.osmId===174188399).dist<.015);
+  assert.ok(stats.canWalk(x,z));
+  let position=[x,z];
+  for(let i=0;i<70;i++){
+    position=movePlayer(position,movementDelta(0,-1,0,5.1,.05),stats.canWalk,.05).position;
+  }
+  assert.ok(position[1]>z+16);
+  assert.ok(!stats.canWalk(108,131),'Nature Centre footprint must block walking');
+  assert.ok(!stats.canWalk(world.bbox[2]+2,0));
+  avatar.root.position.set(x,0,z);
+  assert.equal(await manager.travel('high-park:toronto-gate'),true);
+  manager.unload();
+});

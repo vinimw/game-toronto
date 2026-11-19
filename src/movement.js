@@ -33,8 +33,9 @@ export function movePlayer(position, delta, canWalk, dt) {
   if (!finitePoint(position)) throw new RangeError('Invalid player position');
   if (!finitePoint(delta) || !Number.isFinite(dt) || dt <= 0) return {position: [...position], speed: 0, heading: null};
   const distance = Math.hypot(...delta);
-  // Runtime movement is <= .45m/frame. Reject corrupt/unbounded displacement.
-  if (!Number.isFinite(distance) || distance > 1) return {position: [...position], speed: 0, heading: null};
+  // Maximum supported running speed: 9 units/s × 5, at a capped 50 ms step.
+  // Substep size stays radius/2 regardless of speed (at most 13 steps).
+  if (!Number.isFinite(distance) || distance > 2.25 + 1e-9) return {position: [...position], speed: 0, heading: null};
   let [x, z] = position;
   const steps = Math.max(1, Math.ceil(distance / (PLAYER_RADIUS / 2)));
   for (let i = 0; i < steps; i++) {

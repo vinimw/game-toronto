@@ -1,23 +1,48 @@
 import {makeDemoWorld} from './demo-world.js';
 import {latLonToLocal,nearestOnPath} from './geo.js';
+import {createWalkTest} from './movement.js';
+import {HIGH_PARK_GATE} from './regions.js';
+
+const snapshotUrl='/data/high-park.osm.json';
+
+export function pedestrianPath(feature){
+  const tags=feature.tags??{};
+  return feature.kind==='path'&&['footway','path','pedestrian'].includes(tags.highway)&&
+    tags.footway!=='crossing'&&tags.foot!=='no'&&!['private','no'].includes(tags.access);
+}
+
+export function prepareHighParkMap(data){
+  const {origin,bbox,bboxWgs84,features}=data;
+  if(data.version!==2||data.mode!=='osm'||data.dataset!=='high-park-north'||
+    !data.sourceUrl?.startsWith('https://api.openstreetmap.org/api/0.6/map.json?')||
+    !/^[0-9a-f]{64}$/.test(data.sourceSha256)||!Number.isFinite(Date.parse(data.extractedAt))||
+    ![origin?.lat,origin?.lon].every(Number.isFinite)||bbox?.length!==4||!bbox.every(Number.isFinite)||
+    bboxWgs84?.length!==4||!bboxWgs84.every(Number.isFinite)||
+    !Array.isArray(features)||features.length===0||
+    !features.every(f=>f.osmType==='way'&&Number.isSafeInteger(f.osmId)&&f.points?.length>=2&&
+      f.points.every(p=>p.length===2&&p.every(Number.isFinite)))){
+    throw new Error('Snapshot OSM ausente, inválido ou sem proveniência.');
+  }
+  const spawn=latLonToLocal(HIGH_PARK_GATE.lat,HIGH_PARK_GATE.lon,origin);
+  const canWalk=createWalkTest(features,bbox);
+  if(!canWalk(...spawn)||nearestOnPath(spawn,features,pedestrianPath).dist>.10)
+    throw new Error('A chegada não coincide com uma calçada caminhável do recorte.');
+  // Keep the existing memory, projected onto the same accessible sidewalk.
+  const memoryAnchor=latLonToLocal(43.652846,-79.4653253,origin);
+  const marker=nearestOnPath(memoryAnchor,features,f=>pedestrianPath(f)&&f.osmId===174188399);
+  const memory=marker.dist<5&&canWalk(...marker.point)?marker.point:spawn;
+  return {...data,spawn,memory,label:'High Park norte · © OpenStreetMap contributors'};
+}
+
 export async function loadWorld(){
+  if(globalThis.location && new URLSearchParams(location.search).get('map')==='demo')
+    return {...makeDemoWorld(),fallbackReason:'DEMO solicitado por URL.'};
   try {
-    const r=await fetch('/data/high-park.osm.json',{cache:'no-store'});
-    if(!r.ok) throw new Error('Arquivo geográfico ainda não importado');
-    const data=await r.json();
-    if(!Array.isArray(data.features) || data.features.length<20) throw new Error('Dados geográficos incompletos');
-    // Approximate north-central park entry. Find nearest mapped walking route.
-    const nearEntrance=latLonToLocal(43.6508,-79.4651,data.origin);
-    const spawn=nearestOnPath(nearEntrance,data.features,f=>f.kind==='path' && !['motorway','trunk'].includes(f.tags?.highway)).point;
-    const nearMemory=latLonToLocal(43.6488,-79.4638,data.origin);
-    let memory=nearestOnPath(nearMemory,data.features,f=>f.kind==='path' && ['footway','path','pedestrian','cycleway','residential','living_street'].includes(f.tags?.highway)).point;
-    if(Math.hypot(memory[0]-spawn[0],memory[1]-spawn[1])>230){
-      const alternate=nearestOnPath([spawn[0]+42,spawn[1]+30],data.features,f=>f.kind==='path' && ['footway','path','pedestrian'].includes(f.tags?.highway));
-      memory=alternate.point;
-    }
-    return {...data,mode:'osm',spawn,memory,label:`Traçados de OpenStreetMap · ${data.features.length} elementos`};
-  } catch (e) {
-    console.info('Game Love: modo de demonstração. Execute npm run map:import para obter OpenStreetMap.',e.message);
-    return makeDemoWorld();
+    const response=await fetch(snapshotUrl,{cache:'no-store',headers:{Accept:'application/json'}});
+    if(!response.ok)throw new Error('Recorte OSM indisponível.');
+    return prepareHighParkMap(await response.json());
+  }catch(error){
+    console.info('Game Love: High Park DEMO foi carregado como fallback.',error.message);
+    return {...makeDemoWorld(),fallbackReason:error.message};
   }
 }
