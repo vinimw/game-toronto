@@ -63,10 +63,13 @@ test('baseline identity comes from the exact archived metadata and duplicate IDs
     const source=join(dir,'source.zip');
     execFileSync('zip',['-q',source,...Object.keys(entries)],{cwd:dir});
     const sha=createHash('sha256').update(await readFile(source)).digest('hex');
-    const opened=await openReviewZip(source,dir);
+    const opened=await openReviewZip(source,dir,{expectedSha256:sha.toUpperCase()});
     const result=await buildComparison(opened,previous);
-    assert.deepEqual(result.baseline,{git:metadata.git,exportedAt:metadata.exportedAt,archiveSha256:sha,pipelineVersion:null});
+    assert.deepEqual(result.baseline,{git:metadata.git,exportedAt:metadata.exportedAt,archiveFile:'source.zip',archiveSha256:sha,sha256Verified:true,pipelineVersion:null});
     await assert.rejects(openReviewZip(source,dir,{outputZip:source}),/ZIP de saída/);
+    await assert.rejects(openReviewZip(source,dir,{expectedSha256:'f'.repeat(64)}),/não confere/);
+    await assert.rejects(openReviewZip(source,dir,{expectedSha256:''}),/64 dígitos/);
+    await assert.rejects(openReviewZip(join(dir,'outro.zip'),dir),/Baseline solicitado indisponível: outro.zip/);
     await assert.rejects(buildComparison(review([capture,capture],10),previous),/duplicado/);
   }finally{await rm(dir,{recursive:true,force:true});}
 });

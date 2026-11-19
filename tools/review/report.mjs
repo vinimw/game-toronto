@@ -34,7 +34,9 @@ function compareSection(comparison,source){
   const counts=captures.filter(capture=>capture.status==='comparable').length;
   return '<p>'+counts+' pares equivalentes de '+captures.length+' vistas encontradas.</p>'+
     '<p>Referência '+h(comparison.baseline.git?.commit)+' · Atual '+h(comparison.current.git?.commit)+'</p>'+
-    '<p>Data da referência '+h(comparison.baseline.exportedAt)+' · SHA-256 <code>'+h(comparison.baseline.archiveSha256)+'</code></p>'+
+    '<p>Arquivo <code>'+h(comparison.baseline.archiveFile)+'</code> · '+h(comparison.baseline.exportedAt)+'</p>'+
+    '<p>SHA-256 <code>'+h(comparison.baseline.archiveSha256)+'</code>'+
+    (comparison.baseline.sha256Verified?' · conferido com o valor fornecido':'')+'</p>'+
     '<p>'+h(meaning[environment])+'</p><h3>Percurso</h3>'+
     (motion.reasons.length?'<p>'+h(motion.reasons.join(' '))+'</p>':deltaTable(motion.metrics))+
     captures.map(capture=>'<section><h3>'+h(capture.id+' · '+capture.label)+'</h3>'+

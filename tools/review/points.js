@@ -31,4 +31,6 @@ points.push(
     points[2].osm.eye,points[2].osm.look,'mobile'),
   parkPoint('13-high-park-nature-centre-mobile','High Park · Nature Centre em viewport mobile',points[4],
     [-10,4,-2],[12,2.3,0],'mobile'),
+  parkPoint('22-high-park-nature-centre-mobile-375','High Park · Nature Centre em 375 × 667',points[4],
+    [-10,4,-2],[12,2.3,0],'mobileCompact'),
 );

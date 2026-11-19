@@ -15,8 +15,9 @@ import {benchmarkMotion,frameStatistics} from './motion-benchmark.js';
 if(!import.meta.env.DEV)throw new Error('Review mode requires the Vite development server.');
 
 const avatar=createCharacter(new THREE.Group());
-const profileId=new URLSearchParams(location.search).get('profile')==='mobile'?'mobile':'desktop';
-const profile=reviewProfiles[profileId],quality=profile.quality;
+const profileId=new URLSearchParams(location.search).get('profile');
+const profile=Object.hasOwn(reviewProfiles,profileId)?reviewProfiles[profileId]:reviewProfiles.desktop;
+const quality=profile.quality;
 const renderer=new THREE.WebGLRenderer({antialias:profile.antialias});
 renderer.toneMapping=THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure=1.16;

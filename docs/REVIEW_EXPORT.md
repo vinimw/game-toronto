@@ -108,3 +108,33 @@ Revise o vídeo antes de compartilhar. Uma nova exportação volta a gerar o ZIP
 - **Pacote parcial.** Captura obrigatória ausente, falha de benchmark, de cartografia ou de teste torna o export parcial. O comando retorna código 1 após publicar os diagnósticos, quando consegue gerar um ZIP válido. Veja `report.html`, `metadata.json` e `console-errors.json`. Quando o processo falha antes dessa publicação, a última exportação permanece disponível.
 - **Captura indisponível.** Confira a origem e o motivo em `metadata.json`. Um ponto ausente ou obstruído é registrado individualmente, e os demais pontos ainda podem ser exportados.
 - **Exportação em andamento.** Aguarde o outro comando encerrar. Se tiver certeza de que um processo anterior foi encerrado abruptamente, remova o diretório vazio `artifacts/reviews/.export-lock` e tente novamente.
+
+## Review Export v2.2
+
+Os ZIPs preservados esclarecem a cadeia de referências. O arquivo
+`v3.2-review-v2.zip` contém o commit `8827e9e0`. O intermediário
+`v3.2-review-v2.1.zip`, commit `077b8df0`, foi exportado com esse
+primeiro arquivo como referência. A revisão de Landmarks, commit
+`0ddc4eb`, usou o intermediário para isolar a mudança no Nature Centre.
+Cada comparação tem o seu próprio ZIP de origem.
+
+Use `--baseline <arquivo.zip>` em ambos os comandos para selecionar a
+referência. Acrescente `--baseline-sha256 <64 dígitos hexadecimais>`
+para conferir um hash obtido separadamente. Os relatórios registram
+nome efetivo do arquivo, hash calculado, resultado da conferência,
+commit e data do ZIP. O export falha se o arquivo solicitado estiver
+ausente, corrompido ou divergir do hash informado.
+
+As vistas 01–16 conservam seus IDs. As vistas 17–18 mostram missão e
+velocidade abertas. As vistas 19–21 registram o jogo em outros
+viewports. A vista 22 repete a composição do Nature Centre em 375 ×
+667. O teste integrado passa pelos quatro viewports, abre e fecha o
+mapa e os painéis e percorre os portais de ida e volta. Em mobile,
+ele mede o deslocamento da personagem durante um segundo toque que
+gira a câmera. As safe areas são exercitadas com insets CSS simulados
+e verificações geométricas de visibilidade e sobreposição.
+
+A comparação marca visualmente HUDs com estados ou versões de layout
+diferentes. Os pares incompatíveis conservam as imagens lado a lado
+para inspeção e omitem deltas de desempenho. O relatório principal
+continua usando imagens relativas depois da extração.

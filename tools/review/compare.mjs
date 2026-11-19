@@ -1,15 +1,20 @@
 import {execFileSync} from 'node:child_process';
 import {copyFile,mkdir,readFile,realpath,writeFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
-import {join} from 'node:path';
+import {basename,join} from 'node:path';
 import {isDeepStrictEqual} from 'node:util';
 import {imageData} from './report.mjs';
 
 const imagePath=/^screenshots\/[a-z0-9][a-z0-9-]*\.png$/;
 const zipOptions={maxBuffer:24*1024*1024,timeout:15000,stdio:['ignore','pipe','ignore']};
 
-export async function openReviewZip(source,stage,{outputZip}={}){
-  const input=await realpath(source);
+export async function openReviewZip(source,stage,{outputZip,expectedSha256}={}){
+  if(expectedSha256!==undefined&&!/^[a-f0-9]{64}$/i.test(expectedSha256))
+    throw new Error('--baseline-sha256 deve conter 64 dígitos hexadecimais.');
+  const input=await realpath(source).catch(error=>{
+    if(error.code==='ENOENT')throw new Error('Baseline solicitado indisponível: '+basename(source));
+    throw error;
+  });
   const destination=outputZip?await realpath(outputZip).catch(error=>{
     if(error.code!=='ENOENT')throw error;
     return outputZip;
@@ -18,6 +23,10 @@ export async function openReviewZip(source,stage,{outputZip}={}){
   const zip=join(stage,'baseline.zip');
   await copyFile(input,zip);
   const archiveSha256=createHash('sha256').update(await readFile(zip)).digest('hex');
+  if(expectedSha256!==undefined&&archiveSha256!==expectedSha256.toLowerCase())
+    throw new Error('SHA-256 do baseline não confere com o valor informado: '+basename(input));
+  try{execFileSync('unzip',['-tq',zip],zipOptions);}
+  catch{throw new Error('ZIP do baseline inválido: '+basename(input));}
   const files=execFileSync('unzip',['-Z','-1',zip],zipOptions).toString().trimEnd().split('\n');
   const read=file=>{
     if(files.filter(name=>name===file).length!==1)throw new Error('Entrada ausente ou duplicada no ZIP: '+file);
@@ -29,7 +38,9 @@ export async function openReviewZip(source,stage,{outputZip}={}){
     throw new Error('metadata.json do baseline sem identificação válida do export.');
   evidenceCaptures(metadata);
   return {
+    archiveFile:basename(input),
     archiveSha256,
+    sha256Verified:expectedSha256!==undefined,
     metadata,
     performance:JSON.parse(read('performance.json')),
     readImage(file){
@@ -77,6 +88,12 @@ function evidenceCaptures(metadata){
   return byId;
 }
 
+export function baselineIdentity(review){
+  return {archiveFile:review.archiveFile??null,archiveSha256:review.archiveSha256??null,
+    sha256Verified:review.sha256Verified??false,git:review.metadata.git,
+    exportedAt:review.metadata.exportedAt??null,pipelineVersion:review.metadata.pipelineVersion??null};
+}
+
 export async function buildComparison(before,after){
   const old=evidenceCaptures(before.metadata),next=evidenceCaptures(after.metadata);
   const oldMetrics=new Map(before.performance.captures.map(metric=>[metric.captureId,metric]));
@@ -117,8 +134,7 @@ export async function buildComparison(before,after){
   }
   const motionFields=['fps','durationMs','distanceMeters','frameTimeMeanMs','frameTimeP50Ms','frameTimeP95Ms','drawCallsMean','trianglesMean'];
   const flatMotion=m=>({...m,drawCallsMean:m?.drawCalls?.mean,trianglesMean:m?.triangles?.mean});
-  return {baseline:{git:before.metadata.git,exportedAt:before.metadata.exportedAt??null,
-      archiveSha256:before.archiveSha256??null,pipelineVersion:before.metadata.pipelineVersion??null},
+  return {baseline:baselineIdentity(before),
     current:{git:after.metadata.git,pipelineVersion:after.metadata.pipelineVersion??null},environment,
     motion:{reasons:motionReasons,metrics:motionReasons.length?{}:deltas(flatMotion(first),flatMotion(second),motionFields)},
     captures};

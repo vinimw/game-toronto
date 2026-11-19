@@ -9,7 +9,7 @@ import {points} from './points.js';
 import {compareGeometry,cartographicSvg} from './cartography.mjs';
 import {reviewPipelineVersion,reviewProfiles} from './profiles.js';
 import {motionDurationMs} from './motion-benchmark.js';
-import {buildComparison,openReviewZip,writeComparisons} from './compare.mjs';
+import {baselineIdentity,buildComparison,openReviewZip,writeComparisons} from './compare.mjs';
 import {writeReport} from './report.mjs';
 import {captureMobileGameplay,gameplayCaptures} from './mobile-gameplay.mjs';
 
@@ -236,7 +236,10 @@ async function publish(stage,bundle,archive){
 }
 
 async function main(){
-  const {values:{baseline,standalone}}=parseArgs({options:{baseline:{type:'string'},standalone:{type:'boolean'}}});
+  const {values:{baseline,standalone,'baseline-sha256':expectedSha256}}=parseArgs({
+    options:{baseline:{type:'string'},standalone:{type:'boolean'},'baseline-sha256':{type:'string'}},
+  });
+  if(baseline===''||(expectedSha256!==undefined&&!baseline))throw new Error('Informe o arquivo em --baseline.');
   await mkdir(output,{recursive:true});
   const lock=join(output,'.export-lock');
   try {await mkdir(lock);}catch(error){
@@ -247,7 +250,7 @@ async function main(){
   try {
     stage=await mkdtemp(join(output,'.stage-'));
     const bundle=join(stage,'report'),archive=join(stage,'game-love-review.zip');
-    const prior=baseline?await openReviewZip(resolve(baseline),stage,{outputZip:join(output,'game-love-review.zip')}):null;
+    const prior=baseline?await openReviewZip(resolve(baseline),stage,{outputZip:join(output,'game-love-review.zip'),expectedSha256}):null;
     await mkdir(join(bundle,'screenshots'),{recursive:true});
     const git={commit:version(['rev-parse','HEAD']),dirty:null};
     const changes=version(['status','--porcelain']);
@@ -262,14 +265,16 @@ async function main(){
     closeOnAbort=()=>{void browser.close().catch(()=>{});};
     abort.signal.addEventListener('abort',closeOnAbort,{once:true});
     abort.signal.throwIfAborted();
-    const desktop=await collectProfile(browser,started.target,bundle,'desktop');
-    const mobile=await collectProfile(browser,started.target,bundle,'mobile');
+    const profiles=[];
+    for(const id of Object.keys(reviewProfiles))profiles.push(await collectProfile(browser,started.target,bundle,id));
+    const [desktop]=profiles;
     const gameplay=await captureMobileGameplay(browser,started.target,bundle,safeMessage);
     checks.touch=gameplay.touch;
     const {geography,geographicFiles,motion}=desktop;
-    const captures=[...desktop.captures,...mobile.captures,...gameplay.captures];
-    const issues=[...desktop.issues,...mobile.issues,...gameplay.issues];
-    const metrics=[...desktop.metrics,...mobile.metrics];
+    const captures=[...profiles.flatMap(result=>result.captures),...gameplay.captures]
+      .sort((a,b)=>a.id.localeCompare(b.id));
+    const issues=[...profiles.flatMap(result=>result.issues),...gameplay.issues];
+    const metrics=profiles.flatMap(result=>result.metrics);
     abort.signal.throwIfAborted();
     geography.git=git;
     const browserInfo={engine:'chromium',version:browser.version(),headless:true};
@@ -283,6 +288,7 @@ async function main(){
       issues.some(issue=>!issue.expected);
     const metadata={schemaVersion:2,pipelineVersion:reviewPipelineVersion,status:partial?'partial':'complete',
       exportedAt:startedAt,git,checks,browser:browserInfo,runtime,profiles:reviewProfiles,
+      ...(prior?{baseline:baselineIdentity(prior)}:{}),
       reproducibility:{animationTimeSeconds:0,lighting:'Iluminação fixa da cena, sem relógio de dia.',
         proceduralSeedPolicy:'Sementes fixas definidas no gerador versionado pelo commit Git.'},
       viewport,resolution:viewport,captures,geographicEvidence:geographicFiles,video:{status:'not-generated',reason:'MP4 opcional por inclusão manual.'}};

@@ -6,13 +6,15 @@ import {buildComparison,openReviewZip,writeComparisons} from './compare.mjs';
 import {writeReport} from './report.mjs';
 
 async function main(){
-  const {values:{baseline,standalone}}=parseArgs({options:{baseline:{type:'string'},standalone:{type:'boolean'}}});
+  const {values:{baseline,standalone,'baseline-sha256':expectedSha256}}=parseArgs({
+    options:{baseline:{type:'string'},standalone:{type:'boolean'},'baseline-sha256':{type:'string'}},
+  });
   if(!baseline)throw new Error('Uso: npm run review:compare -- --baseline <ZIP anterior>');
   const root=fileURLToPath(new URL('../../artifacts/reviews/',import.meta.url));
   const latest=join(root,'latest');
   const stage=await mkdtemp(join(root,'.compare-'));
   try{
-    const previous=await openReviewZip(resolve(baseline),stage);
+    const previous=await openReviewZip(resolve(baseline),stage,{expectedSha256});
     const read=async file=>JSON.parse(await readFile(join(latest,file),'utf8'));
     const [metadata,performance,geography,issues]=await Promise.all(
       ['metadata.json','performance.json','geographic-correspondence.json','console-errors.json'].map(read));
