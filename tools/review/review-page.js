@@ -119,6 +119,8 @@ async function prepare(id){
   active.stats.setQuality(quality);
   active.stats.markerRoot?.userData.animate(0);
   camera=frameCamera(point,world,position);
+  if(camera.isOrthographicCamera)active.stats.setDetailFocus?.();
+  else active.stats.setDetailFocus?.(camera.position.x,camera.position.z);
   render();
   currentPoint=id;
   document.querySelector('#review-attribution')?.remove();

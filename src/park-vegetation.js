@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {nearSegment,pointInPolygon,seeded} from './geo.js';
 import {contactTexture} from './park-surfaces.js';
-import {parkStyle as style,pathWidth,qualityProfiles} from './visual-settings.js';
+import {parkStyle,realParkStyle,realParkDetailRadius,pathWidth,qualityProfiles} from './visual-settings.js';
 
 function pathSegments(features){
   const segments=[];
@@ -34,7 +34,9 @@ function grassTuft(){
 }
 
 export function plantPark(scene,world,portals,blocked,clearings=[]){
+  const real=world.mode==='osm',style=real?realParkStyle:parkStyle;
   const rand=seeded(99471), segments=pathSegments(world.features);
+  const footpaths=segments.filter(segment=>segment.edge<=1.65);
   const greens=world.features.filter(f=>f.kind==='green');
   const landmarks=[...portals.map(p=>p.position),world.memory].filter(Boolean);
   const [minX,minZ,maxX,maxZ]=world.bbox || [-220,-220,220,220];
@@ -48,11 +50,12 @@ export function plantPark(scene,world,portals,blocked,clearings=[]){
   }
   const geometry={
     trunk:new THREE.CylinderGeometry(.19,.31,1,5),
-    round:new THREE.IcosahedronGeometry(1,1),
+    round:new THREE.IcosahedronGeometry(1,real?0:1),
     spire:new THREE.CylinderGeometry(.14,1,2,7),
-    column:new THREE.IcosahedronGeometry(1,1),
+    column:new THREE.IcosahedronGeometry(1,real?0:1),
     spread:new THREE.DodecahedronGeometry(1),
     grass:grassTuft(),
+    ...(real?{flower:new THREE.CircleGeometry(1,5).rotateX(-Math.PI/2)}:{}),
     stone:new THREE.IcosahedronGeometry(1),
     contact:new THREE.PlaneGeometry(2,2).rotateX(-Math.PI/2),
   };
@@ -61,7 +64,7 @@ export function plantPark(scene,world,portals,blocked,clearings=[]){
     const entries=groups.get(shape)||[];
     if(!groups.has(shape))groups.set(shape,entries);
     dummy.position.set(x,y,z);dummy.scale.set(sx,sy,sz);dummy.rotation.y=rand()*Math.PI*2;dummy.updateMatrix();
-    entries.push({matrix:dummy.matrix.clone(),color:color.set(tint).multiplyScalar(.86+rand()*.24).clone()});
+    entries.push({x,z,matrix:dummy.matrix.clone(),color:color.set(tint).multiplyScalar(.86+rand()*.24).clone()});
   }
   const trees=[], cameraVolumes=[];
   const limit=Math.min(style.treeLimit,Math.ceil((maxX-minX)*(maxZ-minZ)/460));
@@ -69,9 +72,11 @@ export function plantPark(scene,world,portals,blocked,clearings=[]){
   // leaves open lawns and isolated trees without a regular planting grid.
   const groves=[];
   for(let i=0;i<Math.ceil(limit/9);i++){
-    const point=segments.length&&i%3===0?beside(segments[i%segments.length],6+rand()*12,rand):
+    const nearTrails=real?footpaths:segments;
+    const nearIndex=real?Math.floor(rand()*nearTrails.length):i%nearTrails.length;
+    const point=nearTrails.length&&i%3===0?beside(nearTrails[nearIndex],6+rand()*12,rand):
       [minX+rand()*(maxX-minX),minZ+rand()*(maxZ-minZ)];
-    if(i%3!==0 && !greens.some(f=>pointInPolygon(point,f.points)))continue;
+    if((real||i%3!==0)&&!greens.some(f=>pointInPolygon(point,f.points)))continue;
     groves.push({point,radius:style.clusterRadius*(.5+rand()),species:Math.floor(rand()*style.trees.length)});
   }
   for(let i=0;i<limit*9 && trees.length<limit;i++){
@@ -84,6 +89,7 @@ export function plantPark(scene,world,portals,blocked,clearings=[]){
     const species=grove&&rand()<.68?grove.species:Math.floor(rand()*style.trees.length);
     const tree=style.trees[species], scale=.7+rand()*.44;
     const width=tree.width*scale,height=tree.height*scale,depth=tree.depth*scale;
+    if(real&&!greens.some(f=>pointInPolygon(point,f.points)))continue;
     if(!clear(point,width*1.25)||trees.some(([x,z])=>Math.hypot(x-point[0],z-point[1])<style.treeSpacing))continue;
     const [x,z]=point;trees.push(point);
     const crownY=height-depth*.65;
@@ -97,7 +103,7 @@ export function plantPark(scene,world,portals,blocked,clearings=[]){
       add('spire',x,crownY+depth*.65,z,width*.68,depth*.62,width*.66,tree.leaf);
       cameraVolumes.push({center:[x,crownY+depth*.65,z],radii:[width*.68,depth*.62,width*.66]});
     }
-    add('contact',x+.4,.009,z+.24,width*1.22,1,width*.86,0x596d4a);
+    add('contact',x+.4,.009,z+.24,width*1.22,1,width*.86,real?0x506246:0x596d4a);
     cameraVolumes.push({center:[x,crownY,z],radii:[width,depth,width]});
     cameraVolumes.push({center:[x,crownY/2,z],radii:[.32*scale,crownY*.58,.32*scale]});
   }
@@ -105,15 +111,19 @@ export function plantPark(scene,world,portals,blocked,clearings=[]){
   let details=0;
   for(const segment of segments){
     if(segment.edge>1.65||details>=style.detailLimit*.36)continue;
+    if(real&&segment.length<3)continue;
     const {a,b,length,edge}=segment, dx=(b[0]-a[0])/length,dz=(b[1]-a[1])/length;
     for(let along=2+rand()*3;along<length-1 && details<style.detailLimit*.36;along+=3.5+rand()*8){
       const side=rand()<.5?-1:1;
       for(let i=0;i<4;i++){
         const distance=along+rand()*1.1, lateral=(edge+.8+rand()*1.15)*side;
         const point=[a[0]+dx*distance-dz*lateral,a[1]+dz*distance+dx*lateral];
-        if(!clear(point,.2))continue;
+        if(!clear(point,.2)||(real&&!greens.some(f=>pointInPolygon(point,f.points))))continue;
         const size=.18+rand()*.19;
         add('grass',point[0],.008,point[1],size*1.3,size,size*1.3,i===0?0xb8a568:0x77954c);
+        if(real&&i<2&&rand()<.23){
+          add('flower',point[0],size*.83,point[1],.081,1,.081,rand()<.5?0xe9cb76:0xe7e3c8);
+        }
         details++;
       }
     }
@@ -124,7 +134,7 @@ export function plantPark(scene,world,portals,blocked,clearings=[]){
     const grove=groves.length&&rand()<.42?groves[Math.floor(rand()*groves.length)]:null;
     const point=grove?[grove.point[0]+(rand()-.5)*grove.radius,grove.point[1]+(rand()-.5)*grove.radius]:
       beside(segments[Math.floor(rand()*segments.length)],size+.45+rand()*2.6,rand);
-    if(!clear(point,size*1.13))continue;
+    if(!clear(point,size*1.13)||(real&&!greens.some(f=>pointInPolygon(point,f.points))))continue;
     const [x,z]=point;details++;
     if(kind<.33){
       add('shrub',x,size*.36,z,size,size*.52,size*.86,0x819864);
@@ -150,14 +160,34 @@ export function plantPark(scene,world,portals,blocked,clearings=[]){
     batch.computeBoundingSphere();
     scene.add(batch);
     if(contact)contacts=batch;
-    if(['shrub','grass','stone'].includes(shape))detailBatches.push([batch,entries.length]);
+    if(['shrub','grass','stone','flower'].includes(shape))detailBatches.push({batch,entries});
   }
   for(const item of new Set(Object.values(geometry))){
     if(![...groups.keys()].some(shape=>geometry[shape]===item))item.dispose();
   }
-  return {trees:trees.length,cameraVolumes,setQuality(profile){
-    const quality=qualityProfiles[profile]||qualityProfiles.balanced;
-    if(contacts)contacts.visible=quality.contact;
-    for(const [batch,count] of detailBatches)batch.count=Math.ceil(count*quality.details);
+  let profile='high',focusX=null,focusZ=null,dirty=true;
+  function updateDetails(x=null,z=null){
+    if(!dirty&&x===focusX&&z===focusZ)return;
+    if(!dirty&&x!==null&&focusX!==null&&Math.hypot(x-focusX,z-focusZ)<5)return;
+    dirty=false;focusX=x;focusZ=z;
+    const radius=real&&x!==null?realParkDetailRadius[profile]:Infinity;
+    const quality=qualityProfiles[profile];
+    for(const {batch,entries} of detailBatches){
+      const budget=Math.ceil(entries.length*quality.details);
+      let count=0;
+      for(let i=0;i<budget;i++){
+        const item=entries[Math.floor(i*entries.length/budget)];
+        if(x!==null&&Math.hypot(item.x-x,item.z-z)>radius)continue;
+        batch.setMatrixAt(count,item.matrix);batch.setColorAt(count,item.color);count++;
+      }
+      batch.count=count;
+      batch.instanceMatrix.needsUpdate=true;batch.instanceColor.needsUpdate=true;
+    }
+  }
+  return {trees:trees.length,cameraVolumes,setDetailFocus:real?updateDetails:undefined,setQuality(next){
+    profile=Object.hasOwn(qualityProfiles,next)?next:'balanced';
+    if(contacts)contacts.visible=qualityProfiles[profile].contact;
+    if(real){dirty=true;updateDetails(focusX,focusZ);}
+    else for(const {batch,entries} of detailBatches)batch.count=Math.ceil(entries.length*qualityProfiles[profile].details);
   }};
 }

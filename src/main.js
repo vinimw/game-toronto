@@ -198,6 +198,7 @@ function animate(now){
     $('position-text').textContent=`${Math.round(avatar.root.position.x)}m E · ${Math.round(-avatar.root.position.z)}m N`;
     if(mapOpen)drawMiniMap();
   }
+  stats.setDetailFocus?.(camera.position.x,camera.position.z);
   renderer.render(manager.active.scene,camera);
   // Development-only DOM diagnostics for repeated-transition GPU resource checks.
   if(import.meta.env.DEV)renderer.domElement.dataset.resources=JSON.stringify({...renderer.info.memory,

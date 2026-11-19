@@ -28,3 +28,23 @@ const widths={motorway:17,trunk:14,primary:12,secondary:10,tertiary:9,residentia
 export function pathWidth(feature){
   return feature.kind==='rail'?2.8:(widths[feature.tags?.highway]||3);
 }
+
+// Art direction for the OSM region. None of these values define map geometry.
+export const realParkStyle={
+  ...parkStyle,
+  sky:0xf5e4ca, fog:[60,285],
+  hemisphere:{sky:0xfff1d7,ground:0x7b907d,strength:1.46},
+  sun:{color:0xffd3a7,strength:2.22,position:[-65,40,-54]},
+  ground:0x9dab7a, meadow:0x9aaf69, woodland:0x839666,
+  trail:0xd7bc94, road:0xb6a89b, verge:0xb0a278,
+  treeLimit:415, detailLimit:1760, treeSpacing:3.7, clusterRadius:22,
+  trees:[
+    {shape:'round',height:5.3,width:1.73,depth:1.27,leaf:0x819952},
+    {shape:'spire',height:7.2,width:1.16,depth:1.93,leaf:0x577956},
+    {shape:'column',height:7.4,width:1.16,depth:1.83,leaf:0xa7a85b},
+    {shape:'spread',height:5.7,width:2.24,depth:1.07,leaf:0x86954e},
+    {shape:'spread',height:4.2,width:1.70,depth:1.11,leaf:0xc5a25e},
+    {shape:'round',height:6.5,width:1.77,depth:1.71,leaf:0x728855},
+  ],
+};
+export const realParkDetailRadius={low:28,balanced:48,high:82};

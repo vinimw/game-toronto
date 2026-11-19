@@ -3,13 +3,26 @@ import {seeded} from './geo.js';
 
 // Small repeating texture with broad color variation and fine grain. It changes
 // only surface color: elevations and imported geometry stay in the data layer.
-export function terrainTexture(){
+export function terrainTexture(real=false){
   const size=128,rand=seeded(7382),pixels=new Uint8Array(size*size*4);
+  const layer=(cells,seed)=>{
+    const random=seeded(seed), samples=Array.from({length:cells*cells},()=>random());
+    return (x,y)=>{
+      const u=x*cells/size,v=y*cells/size,i=Math.floor(u),j=Math.floor(v);
+      const smooth=t=>t*t*(3-2*t);
+      const tx=smooth(u-i),ty=smooth(v-j);
+      const at=(a,b)=>samples[(b%cells)*cells+(a%cells)];
+      const a=THREE.MathUtils.lerp(at(i,j),at(i+1,j),tx);
+      const b=THREE.MathUtils.lerp(at(i,j+1),at(i+1,j+1),tx);
+      return THREE.MathUtils.lerp(a,b,ty)-.5;
+    };
+  };
+  const broad=layer(5,96712), fine=layer(21,43118);
   for(let y=0;y<size;y++){
     for(let x=0;x<size;x++){
       const u=x/size*Math.PI*2,v=y/size*Math.PI*2;
-      const patches=13*Math.sin(u+Math.sin(v*2))+8*Math.cos(2*v-u)+5*Math.sin(4*u+3*v);
-      const grain=7*rand()-3.5, tone=Math.round(224+patches+grain);
+      const patches=real?42*broad(x,y)+20*fine(x,y):13*Math.sin(u+Math.sin(v*2))+8*Math.cos(2*v-u)+5*Math.sin(4*u+3*v);
+      const grain=(real?17:7)*(rand()-.5), tone=Math.round(224+patches+grain);
       pixels.set([Math.min(255,tone+3),Math.min(255,tone),Math.min(255,Math.round(tone-3+patches*.24)),255],(y*size+x)*4);
     }
   }
@@ -37,7 +50,20 @@ export function appendStrip(vertices,points,width,height){
   }
 }
 
-export function addPathBatches(scene,paths,style,pathWidth,texture,onGeometry){
+// A small disk underneath each interior junction covers the outside of the
+// bend. Its radius matches the strip half-width and it is purely decorative.
+function appendJoins(vertices,points,width,height){
+  const radius=width/2,sides=10;
+  for(const [x,z] of points.slice(1,-1)){
+    for(let side=0;side<sides;side++){
+      const a=side*Math.PI*2/sides,b=(side+1)*Math.PI*2/sides;
+      vertices.push(x,height,z,x+Math.cos(b)*radius,height,z+Math.sin(b)*radius,
+        x+Math.cos(a)*radius,height,z+Math.sin(a)*radius);
+    }
+  }
+}
+
+export function addPathBatches(scene,paths,style,pathWidth,texture,onGeometry,joinBends=false){
   const batches=new Map(), featherPositions=[], featherColors=[];
   const evidence=onGeometry?new Map():null;
   const add=(points,width,height,color)=>{
@@ -54,6 +80,7 @@ export function addPathBatches(scene,paths,style,pathWidth,texture,onGeometry){
     add(feature.points,width+(road?.36:.22),.023,style.verge);
     if(!road)appendFeather(feature.points,width,featherPositions,featherColors);
     const strip=add(feature.points,width,.032,color);
+    if(joinBends)appendJoins(batches.get(color),feature.points,width,.031);
     if(evidence){
       if(!evidence.has(color))evidence.set(color,[]);
       evidence.get(color).push({feature,...strip});

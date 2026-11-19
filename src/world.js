@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import {createWalkTest, buildingHeight} from './movement.js';
 import {seeded} from './geo.js';
+import {buildNatureCentre,NATURE_CENTRE_OSM_ID} from './nature-centre.js';
 import {buildDemoCafe} from './demo-cafe.js';
 import {plantPark} from './park-vegetation.js';
 import {addPathBatches,terrainTexture,worldUVs} from './park-surfaces.js';
-import {parkStyle as style,pathWidth} from './visual-settings.js';
+import {parkStyle,realParkStyle,pathWidth} from './visual-settings.js';
 const material=c=>new THREE.MeshLambertMaterial({color:c,side:THREE.DoubleSide});
 function flat(points,height,color){
   const s=new THREE.Shape(); points.forEach(([x,z],i)=>i?s.lineTo(x,-z):s.moveTo(x,-z));s.closePath();
@@ -22,10 +23,11 @@ function makeBuilding(f,index){
   const roof=flat(points,h+.04,rand()>.5?0x958575:0x8b8580); const group=new THREE.Group();group.add(mesh,roof);return group;
 }
 export function buildWorld(scene,world,portals=[],evidence){
+  const real=world.mode==='osm',style=real?realParkStyle:parkStyle;
   scene.background=new THREE.Color(style.sky);scene.fog=new THREE.Fog(style.sky,...style.fog);
   const hemi=new THREE.HemisphereLight(style.hemisphere.sky,style.hemisphere.ground,style.hemisphere.strength);scene.add(hemi);
   const sun=new THREE.DirectionalLight(style.sun.color,style.sun.strength);sun.position.set(...style.sun.position);scene.add(sun);
-  const texture=terrainTexture(), groundGeometry=new THREE.PlaneGeometry(8000,8000);
+  const texture=terrainTexture(real), groundGeometry=new THREE.PlaneGeometry(8000,8000);
   worldUVs(groundGeometry,true);
   const ground=new THREE.Mesh(groundGeometry,new THREE.MeshLambertMaterial({color:style.ground,map:texture}));
   ground.rotation.x=-Math.PI/2;ground.position.y=-.1;scene.add(ground);
@@ -40,13 +42,17 @@ export function buildWorld(scene,world,portals=[],evidence){
     const mesh=flat(feature.points,.02,style.water);scene.add(mesh);
     evidence?.polygon(feature,mesh);
   });
-  addPathBatches(scene,paths,style,pathWidth,texture,evidence?.strip);
+  addPathBatches(scene,paths,style,pathWidth,texture,evidence?.strip,real);
   const furniture=[],cameraObstacles=[];
   buildings.forEach((feature,index)=>{
     if(world.mode==='demo'&&feature.visual==='park-cafe'){
       const cafe=buildDemoCafe(feature);
       scene.add(cafe.group);furniture.push(...cafe.obstacles);
       cameraObstacles.push({points:feature.points,height:cafe.ridge});
+    }else if(world.mode==='osm'&&feature.osmType==='way'&&feature.osmId===NATURE_CENTRE_OSM_ID){
+      const centre=buildNatureCentre(feature);scene.add(centre.group);
+      evidence?.polygon(feature,centre.roof);
+      cameraObstacles.push({points:feature.points,height:centre.height});
     }else{
       const mesh=makeBuilding(feature,index);
       if(mesh){scene.add(mesh);evidence?.polygon(feature,mesh.children[1]);}
@@ -59,7 +65,7 @@ export function buildWorld(scene,world,portals=[],evidence){
   const vegetation=world.vegetation===false?{trees:0,cameraVolumes:[],setQuality(){}}:
     plantPark(scene,world,portals,(point,radius)=>!canWalk(point[0],point[1],radius),
       furniture.length?[[60,114.5,10]]:[]);
-  const {trees,cameraVolumes,setQuality}=vegetation;
+  const {trees,cameraVolumes,setQuality,setDetailFocus}=vegetation;
   // Ground deco around memory: simple warm glow / recognizable interaction point.
   let markerRoot=null;
   if(world.memory&&world.mode!=='osm'){
@@ -85,5 +91,5 @@ export function buildWorld(scene,world,portals=[],evidence){
     ]});
     cameraVolumes.push({center:[px,3.3,pz],radii:[1.8,.2,.18]});
   }
-  return {canWalk,cameraObstacles,cameraVolumes,setQuality,markerRoot,trees,counts:{paths:paths.length,buildings:buildings.length,water:waters.length,trees}};
+  return {canWalk,cameraObstacles,cameraVolumes,setQuality,setDetailFocus,markerRoot,trees,counts:{paths:paths.length,buildings:buildings.length,water:waters.length,trees}};
 }
