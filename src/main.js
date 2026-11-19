@@ -9,8 +9,9 @@ import {cameraSettings,qualityProfiles} from './visual-settings.js';
 import {avoidVegetation,recoverCameraArm} from './park-camera.js';
 import {buildWorld} from './world.js';
 import {createCharacter} from './character.js';
-import {finitePoint, resolveCamera, frameTiming, frameMetrics} from './movement.js';
+import {finitePoint, resolveCamera, frameTiming, frameMetrics, movementDelta} from './movement.js';
 import {bindGameControls} from './controls.js';
+import {CameraFollow,angleDelta} from './camera-follow.js';
 import {PlayerController} from './player-controller.js';
 import {bindSpeedPanel} from './speed-panel.js';
 import {drawLocalMap} from './local-map.js';
@@ -51,6 +52,7 @@ let albumUnlocked=gameState.state.unlockedMemories.includes(MEMORY_ID);
 const inputs={keys:new Set(),joystickX:0,joystickY:0,runTouch:false};
 const current={yaw:Math.PI*.55,pitch:cameraSettings.pitch,distance:cameraSettings.distance};
 const cameraTarget=new THREE.Vector3();
+const cameraFollow=new CameraFollow(cameraSettings);
 let modalOpen=false,mapOpen=false,nearMemory=false,nearPortal=null,frameCounter=0,accum=0;
 let clock=0;
 const transition=$('scene-transition');
@@ -70,7 +72,7 @@ const manager=new SceneManager({manifest:regionManifest,loadRegion,buildScene:bu
   },
   onActivate(active){
     world=active.world;stats=active.stats;stats.setQuality(quality);
-    current.yaw=active.yaw;cameraTarget.set(avatar.root.position.x,1.48,avatar.root.position.z);cameraInitialized=false;
+    current.yaw=active.yaw;cameraFollow.reset();cameraTarget.set(avatar.root.position.x,1.48,avatar.root.position.z);cameraInitialized=false;
     note=world.mode==='osm'?'Geometria de OpenStreetMap (© colaboradores OSM)':(world.fallbackReason?'Cenário ilustrativo · '+world.fallbackReason:'Cenário demonstrativo ilustrativo · não representa a geografia real');
     const source=$('data-status');
     source.dataset.origin=world.mode==='osm'?'osm':'demo';
@@ -185,7 +187,8 @@ window.addEventListener('keydown',e=>{
 });
 window.addEventListener('keyup',e=>inputs.keys.delete(e.key.toLowerCase()));
 const controls=bindGameControls({canvas:renderer.domElement,joystick:$('joystick'),stick:$('stick'),
-  runButton:$('mobile-run'),inputs,camera:current,settings:cameraSettings,enabled:()=>!manager.loading&&!modalOpen&&!mapOpen});
+  runButton:$('mobile-run'),inputs,camera:current,settings:cameraSettings,enabled:()=>!manager.loading&&!modalOpen&&!mapOpen,
+  onCameraInput:delta=>cameraFollow.manualInput(performance.now(),delta)});
 const speedPanel=bindSpeedPanel($('speed-panel'),player,{minimized:touchHud.matches});
 function resetTiming(){controls.reset();previous=performance.now();accum=frameCounter=0;}
 window.addEventListener('blur',resetTiming);
@@ -203,12 +206,15 @@ function animate(now){
   let z=(inputs.keys.has('w')||inputs.keys.has('arrowup')?1:0)-(inputs.keys.has('s')||inputs.keys.has('arrowdown')?1:0)+inputs.joystickY;
   if(manager.loading||modalOpen||mapOpen){x=z=0;}
   const running=inputs.keys.has('shift')||inputs.runTouch;
-  const motion=player.move([avatar.root.position.x,avatar.root.position.z],{right:x,forward:z,yaw:current.yaw,running,dt,canWalk:stats.canWalk});
+  const movementReferenceYaw=cameraFollow.referenceYaw(x,z,angleDelta(0,current.yaw+cameraFollow.offset));
+  const motion=player.move([avatar.root.position.x,avatar.root.position.z],{right:x,forward:z,yaw:movementReferenceYaw,running,dt,canWalk:stats.canWalk});
   if(finitePoint(motion.position))avatar.root.position.set(motion.position[0],0,motion.position[1]);
   if(motion.heading!==null) {
     const diff=Math.atan2(Math.sin(motion.heading-avatar.root.rotation.y),Math.cos(motion.heading-avatar.root.rotation.y));
     avatar.root.rotation.y+=diff*(1-Math.exp(-dt*9));
   }
+  cameraFollow.update({now,dt,manualYaw:current.yaw,right:x,forward:z,heading:motion.heading});
+  const cameraYaw=angleDelta(0,current.yaw+cameraFollow.offset);
   avatar.update(dt,motion.animationSpeed);
   speedPanel.update(motion.speed);
   stats.markerRoot?.userData.animate(clock);
@@ -220,9 +226,16 @@ function animate(now){
   else cameraOrbit.lerp(desired,1-Math.exp(-dt*cameraSettings.orbit));
   // Resolve after smoothing, so interpolation cannot carry the camera through a wall.
   const anchor=[avatar.root.position.x,1.48,avatar.root.position.z];
-  const clearOrbit=resolveCamera(anchor,cameraOrbit.toArray(),stats.cameraObstacles);
-  const safeCamera=avoidVegetation(anchor,clearOrbit,stats.cameraVolumes);
   const orbitDelta=cameraOrbit.clone().sub(target);
+  if(cameraFollow.offset!==0){
+    const c=Math.cos(cameraFollow.offset),s=Math.sin(cameraFollow.offset);
+    const {x:offsetX,z:offsetZ}=orbitDelta;
+    orbitDelta.x=c*offsetX+s*offsetZ;
+    orbitDelta.z=c*offsetZ-s*offsetX;
+  }
+  const clearOrbit=resolveCamera(anchor,cameraFollow.offset===0
+    ?cameraOrbit.toArray():[target.x+orbitDelta.x,target.y+orbitDelta.y,target.z+orbitDelta.z],stats.cameraObstacles);
+  const safeCamera=avoidVegetation(anchor,clearOrbit,stats.cameraVolumes);
   const safeDistance=Math.hypot(safeCamera[0]-anchor[0],safeCamera[1]-anchor[1],safeCamera[2]-anchor[2]);
   const limit=Math.min(1,safeDistance/Math.max(.001,orbitDelta.length()));
   cameraArm=recoverCameraArm(cameraArm,limit,dt,cameraSettings.clearanceRecovery);
@@ -233,7 +246,7 @@ function animate(now){
   nearPortal=manager.nearbyPortal([avatar.root.position.x,avatar.root.position.z]);
   $('action-wrap').classList.toggle('hidden',(!nearMemory&&!nearPortal)||manager.loading||modalOpen||mapOpen);
   $('action-label').textContent=nearPortal?nearPortal.label:albumUnlocked?'Revisitar lembrança':'Descobrir memória';
-  $('compass').textContent=(((current.yaw%(Math.PI*2)+Math.PI*2)%(Math.PI*2))<Math.PI/4||((current.yaw%(Math.PI*2)+Math.PI*2)%(Math.PI*2))>Math.PI*1.75)?'N':Math.sin(current.yaw)>0?'O':'L';
+  $('compass').textContent=(((cameraYaw%(Math.PI*2)+Math.PI*2)%(Math.PI*2))<Math.PI/4||((cameraYaw%(Math.PI*2)+Math.PI*2)%(Math.PI*2))>Math.PI*1.75)?'N':Math.sin(cameraYaw)>0?'O':'L';
   accum+=timing.real;frameCounter++;
   if(accum>.45){const metrics=frameMetrics(frameCounter,accum);frameCounter=0;accum=0;
     $('performance').textContent=`${Math.round(metrics.fps)} FPS · ${metrics.milliseconds.toFixed(1)} ms`;
@@ -248,7 +261,8 @@ function animate(now){
     sceneId:manager.active.scene.name,origin:world.mode==='osm'?'OSM REAL':'DEMO',
     sourceSha256:world.sourceSha256??null,bboxWgs84:world.bboxWgs84??null,geographicOrigin:world.origin??null,
     position:{local:avatar.root.position.toArray(),headingRadians:avatar.root.rotation.y},
-    orbit:{yaw:current.yaw,pitch:current.pitch},
+    orbit:{yaw:cameraYaw,pitch:current.pitch,renderedYaw:Math.atan2(camera.position.x-target.x,camera.position.z-target.z)},
+    movement:{referenceYaw:movementReferenceYaw,direction:movementDelta(x,z,movementReferenceYaw,1,.05).map(value=>value/.05)},
     camera:{projection:camera.type,position:camera.position.toArray(),quaternion:camera.quaternion.toArray(),
       fovDegrees:camera.fov},
     graphics:{profile:quality,...qualityProfiles[quality],pixelRatio:renderer.getPixelRatio(),antialias:!mobile},

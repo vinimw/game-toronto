@@ -1,3 +1,4 @@
+import {evaluateCamera} from './camera-evaluation.mjs';
 import {spawn,spawnSync} from 'node:child_process';
 import {access,mkdir,mkdtemp,readFile,rename,rm,writeFile} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
@@ -236,8 +237,8 @@ async function publish(stage,bundle,archive){
 }
 
 async function main(){
-  const {values:{baseline,standalone,'baseline-sha256':expectedSha256}}=parseArgs({
-    options:{baseline:{type:'string'},standalone:{type:'boolean'},'baseline-sha256':{type:'string'}},
+  const {values:{baseline,standalone,'baseline-sha256':expectedSha256,'camera-evaluation':cameraEvaluation}}=parseArgs({
+    options:{baseline:{type:'string'},standalone:{type:'boolean'},'baseline-sha256':{type:'string'},'camera-evaluation':{type:'boolean'}},
   });
   if(baseline===''||(expectedSha256!==undefined&&!baseline))throw new Error('Informe o arquivo em --baseline.');
   await mkdir(output,{recursive:true});
@@ -275,6 +276,16 @@ async function main(){
       .sort((a,b)=>a.id.localeCompare(b.id));
     const issues=[...profiles.flatMap(result=>result.issues),...gameplay.issues];
     const metrics=profiles.flatMap(result=>result.metrics);
+    let cameraTrace;
+    if(cameraEvaluation){
+      try{cameraTrace=await evaluateCamera(browser,started.target,bundle,stage);}
+      catch(error){
+        cameraTrace={status:'failed',reason:safeMessage(error.message)};
+        issues.push({type:'camera-evaluation-failed',message:cameraTrace.reason});
+      }
+      checks.camera={status:cameraTrace.status,report:'camera-evaluation.json'};
+      console.log('[review] Avaliação de câmera: '+cameraTrace.status);
+    }
     abort.signal.throwIfAborted();
     geography.git=git;
     const browserInfo={engine:'chromium',version:browser.version(),headless:true};
@@ -298,6 +309,9 @@ async function main(){
     const json=(file,value)=>writeFile(join(bundle,file),JSON.stringify(value,null,2)+'\n');
     await Promise.all([json('metadata.json',metadata),json('performance.json',performance),json('console-errors.json',issues),json('geographic-correspondence.json',geography)]);
 
+    if(cameraTrace)await json('camera-evaluation.json',cameraTrace);
+    const cameraFiles=cameraTrace?['camera-evaluation.json',...(cameraTrace.video?[cameraTrace.video]:[])]:[];
+
     const imageFiles=[...geographicFiles.filter(file=>file.endsWith('.png')),...captures.flatMap(capture=>capture.file?[capture.file]:[])];
     const current={metadata,performance,readImage:file=>readFile(join(bundle,file))};
     const comparison=prior?await buildComparison(prior,current):null;
@@ -309,7 +323,7 @@ async function main(){
 
     // Explicit allowlist. Nothing outside this staging directory can enter the archive.
     const files=['metadata.json','performance.json','console-errors.json','geographic-correspondence.json',
-      'report.html',...standaloneFiles,...geographicFiles,...captures.flatMap(capture=>capture.file?[capture.file]:[]),...comparisonFiles];
+      'report.html',...cameraFiles,...standaloneFiles,...geographicFiles,...captures.flatMap(capture=>capture.file?[capture.file]:[]),...comparisonFiles];
     if((await run('zip',['-q','-X',archive,...files],{cwd:bundle})).code!==0)
       throw new Error('Falha ao criar o ZIP.');
     if((await run('unzip',['-tq',archive],{quiet:true})).code!==0)

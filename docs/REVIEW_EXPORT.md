@@ -138,3 +138,11 @@ A comparação marca visualmente HUDs com estados ou versões de layout
 diferentes. Os pares incompatíveis conservam as imagens lado a lado
 para inspeção e omitem deltas de desempenho. O relatório principal
 continua usando imagens relativas depois da extração.
+
+Para incluir uma caminhada de diagnóstico da câmera no High Park, use
+`npm run review:export -- --camera-evaluation`. A avaliação usa o joystick
+e gestos de câmera em Chromium com viewport mobile emulado. O ZIP inclui
+`camera-evaluation.webm` e `camera-evaluation.json`, com posição, direção
+solicitada, referência de movimento, direção do corpo, yaw comandado e
+azimute da câmera renderizada por frame. As capturas com poses fixas
+continuam no fluxo de revisão existente.

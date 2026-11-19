@@ -1,5 +1,13 @@
+export function joystickAxes(dx,dy){
+  const distance=Math.hypot(dx,dy);
+  const deadZone=4,fullTravel=38;
+  if(!Number.isFinite(distance)||distance<=deadZone)return [0,0];
+  const scale=Math.min(1,(distance-deadZone)/(fullTravel-deadZone))/distance;
+  return [dx*scale,-dy*scale];
+}
+
 // Each surface owns one pointer. A second finger cannot replace an active drag.
-export function bindGameControls({canvas, joystick, stick, runButton, inputs, camera, settings, enabled}) {
+export function bindGameControls({canvas, joystick, stick, runButton, inputs, camera, settings, enabled, onCameraInput=()=>{}}) {
   let cameraPointer = null, joystickPointer = null, runPointer = null;
   let previousX = 0, previousY = 0;
   const listen = (element, type, callback) => element.addEventListener(type, callback, type === 'wheel' ? {passive:false} : undefined);
@@ -22,8 +30,11 @@ export function bindGameControls({canvas, joystick, stick, runButton, inputs, ca
     if (cameraPointer !== e.pointerId || !enabled()) return;
     const dx = e.clientX - previousX, dy = e.clientY - previousY;
     if (Number.isFinite(dx) && Number.isFinite(dy)) {
-      camera.yaw = (camera.yaw - dx * settings.yawSensitivity) % (Math.PI * 2);
-      camera.pitch = Math.min(settings.maxPitch, Math.max(settings.minPitch, camera.pitch + dy * settings.pitchSensitivity));
+      const delta=-dx*settings.yawSensitivity;
+      const pitch=Math.min(settings.maxPitch,Math.max(settings.minPitch,camera.pitch+dy*settings.pitchSensitivity));
+      if(delta||pitch!==camera.pitch)onCameraInput(delta);
+      camera.yaw=(camera.yaw+delta)%(Math.PI*2);
+      camera.pitch=pitch;
     }
     previousX = e.clientX; previousY = e.clientY;
   });
@@ -40,8 +51,7 @@ export function bindGameControls({canvas, joystick, stick, runButton, inputs, ca
     const r = joystick.getBoundingClientRect();
     const dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
     if (![dx, dy].every(Number.isFinite)) return;
-    const magnitude = Math.max(38, Math.hypot(dx, dy));
-    inputs.joystickX = dx / magnitude; inputs.joystickY = -dy / magnitude;
+    [inputs.joystickX,inputs.joystickY]=joystickAxes(dx,dy);
     const travel = Math.min(38, Math.min(r.width, r.height) * .29);
     stick.style.transform = `translate(${inputs.joystickX * travel}px,${-inputs.joystickY * travel}px)`;
   }
