@@ -36,7 +36,7 @@ test('raw-source comparison detects a missing building and a shifted Three.js st
 });
 
 test('OSM visual details respect path clearance and quality reduces nearby detail',async()=>{
-  const {nearSegment,pointInPolygon}=await import('../src/geo.js');
+  const {latLonToLocal,nearSegment,pointInPolygon}=await import('../src/geo.js');
   const {pathWidth,realPathAppearance}=await import('../src/visual-settings.js');
   const data=JSON.parse(await readFile(new URL('../public/data/high-park.osm.json',import.meta.url)));
   const world=prepareHighParkMap(data),scene=new THREE.Scene();
@@ -53,8 +53,17 @@ test('OSM visual details respect path clearance and quality reduces nearby detai
   try{
     const venue=scene.getObjectByName('high-park-nature-centre');
     assert.ok(venue?.children[1].geometry.index.count>0);
+    const [landmark]=stats.landmarks;
+    assert.equal(landmark.id,'high-park:nature-centre');
+    assert.deepEqual(landmark.osm,{type:'way',id:43805272});
+    const footprint=world.features.find(feature=>feature.osmId===landmark.osm.id).points;
+    const {lat,lon}=landmark.geographicAnchor;
+    assert.ok(pointInPolygon(latLonToLocal(lat,lon,world.origin),footprint));
     assert.ok(!stats.canWalk(108,131));
     const vegetation=['trunk','shrub','grass','flower'].map(kind=>scene.getObjectByName('park:'+kind));
+    const grounds=venue.getObjectByName('nature-centre-grounds');
+    const localDetails=grounds.children.filter(child=>child.isInstancedMesh);
+    assert.ok(localDetails.length>0);
     const routes=world.features.filter(feature=>feature.kind==='path');
     const lawns=world.features.filter(feature=>feature.tags.landuse==='grass');
     const transform=new THREE.Matrix4();
@@ -63,7 +72,7 @@ test('OSM visual details respect path clearance and quality reduces nearby detai
       assert.ok(Math.abs(width-realPathAppearance(feature).width)<.001);
       assert.ok(width<pathWidth(feature));
     }
-    for(const batch of vegetation){
+    for(const batch of [...vegetation,...localDetails]){
       assert.ok(batch?.count>0);
       for(let i=0;i<batch.count;i++){
         batch.getMatrixAt(i,transform);
@@ -84,11 +93,17 @@ test('OSM visual details respect path clearance and quality reduces nearby detai
     assert.equal(distribution.grid.treeCounts.flat().reduce((a,b)=>a+b,0),vegetation[0].count);
     const grass=scene.getObjectByName('park:grass'),full=grass.count;
     stats.setQuality('low');
+    assert.equal(grounds.visible,false);
     stats.setDetailFocus(...world.spawn);
     assert.ok(grass.count<full*.32);
     assert.equal(stats.vegetationMetrics().detailInstancesEnabled.grass,grass.count);
     stats.setQuality('high');
     stats.setDetailFocus();
+    assert.equal(grounds.visible,true);
     assert.equal(grass.count,full);
+    stats.setDetailFocus(...world.spawn);
+    assert.equal(grounds.visible,false);
+    stats.setDetailFocus(...latLonToLocal(lat,lon,world.origin));
+    assert.equal(grounds.visible,true);
   }finally{disposeScene(scene);}
 });

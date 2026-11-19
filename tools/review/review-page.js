@@ -188,6 +188,7 @@ function geography(){
     status:'source-comparison',region:active.id,bboxWgs84:world.bboxWgs84,bboxOrder:'south,west,north,east',
     dataExtractionUtc:world.extractedAt,sourceUrl:world.sourceUrl,sourceSha256:world.sourceSha256,
     attribution:world.source,license:world.license,coverage:world.coverage,
+    landmarks:active.stats.landmarks,
     comparisons:[
       [174188399,'Calçada de chegada ao sul de Bloor Street West'],
       [1366720320,'Colborne Lodge Drive'],

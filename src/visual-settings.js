@@ -60,7 +60,6 @@ export const realParkStyle={
   ground:0x9baa7a, meadow:0x99ab6d, woodland:0x829266,
   trail:0xcdb389, paved:0xb9b3a6, road:0xa3a099,
   contactOpacity:{low:0,balanced:.36,high:.44},
-  centreContactOpacity:{low:0,balanced:.19,high:.25},
   treeLimit:490, detailLimit:2120, treeSpacing:3.65,
   trees:[
     {shape:'round',height:6.3,width:2.16,depth:1.57,leaf:0x77934c},

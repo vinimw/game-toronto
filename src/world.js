@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {createWalkTest, buildingHeight} from './movement.js';
 import {seeded} from './geo.js';
-import {buildNatureCentre,NATURE_CENTRE_OSM_ID} from './nature-centre.js';
+import {findLandmark} from './landmarks.js';
 import {buildDemoCafe} from './demo-cafe.js';
 import {plantPark} from './park-vegetation.js';
 import {addPathBatches,terrainTexture,worldUVs} from './park-surfaces.js';
@@ -46,19 +46,20 @@ export function buildWorld(scene,world,portals=[],evidence){
   });
   addPathBatches(scene,paths,style,pathWidth,texture,evidence?.strip,real);
   const furniture=[],cameraObstacles=[],clearings=[];
-  let centreContact;
+  const landmarks=[];
   buildings.forEach((feature,index)=>{
+    const definition=findLandmark(world,feature);
     if(world.mode==='demo'&&feature.visual==='park-cafe'){
       const cafe=buildDemoCafe(feature);
       scene.add(cafe.group);furniture.push(...cafe.obstacles);
       cameraObstacles.push({points:feature.points,height:cafe.ridge});
-    }else if(world.mode==='osm'&&feature.osmType==='way'&&feature.osmId===NATURE_CENTRE_OSM_ID){
-      const centre=buildNatureCentre(feature);scene.add(centre.group);
-      evidence?.polygon(feature,centre.roof);
-      centreContact=centre.contact;
-      centreContact.material.opacity=style.centreContactOpacity.high;
-      cameraObstacles.push({points:feature.points,height:centre.height});
-      if(centre.forecourt)clearings.push(centre.forecourt);
+    }else if(definition){
+      const model=definition.build(feature);
+      scene.add(model.group);
+      landmarks.push({definition,model});
+      evidence?.polygon(feature,model.roof);
+      cameraObstacles.push({points:feature.points,height:model.height});
+      if(model.forecourt)clearings.push(model.forecourt);
     }else{
       const mesh=makeBuilding(feature,index);
       if(mesh){scene.add(mesh);evidence?.polygon(feature,mesh.children[1]);}
@@ -68,17 +69,19 @@ export function buildWorld(scene,world,portals=[],evidence){
   cameraObstacles.push(...furniture);
   const collisionFeatures=furniture.length?[...world.features,...furniture]:world.features;
   const canWalk=createWalkTest(collisionFeatures,world.bbox||[-1000,-1000,1000,1000]);
+  for(const {model} of landmarks)model.decorate?.({canWalk,paths});
   if(furniture.length)clearings.push([60,114.5,10]);
   const vegetation=world.vegetation===false?{trees:0,cameraVolumes:[],setQuality(){}}:
     plantPark(scene,world,portals,(point,radius)=>!canWalk(point[0],point[1],radius),clearings);
-  const {trees,cameraVolumes,setDetailFocus,vegetationMetrics}=vegetation;
+  const {trees,cameraVolumes,vegetationMetrics}=vegetation;
+  const setDetailFocus=real?(x,z)=>{
+    vegetation.setDetailFocus?.(x,z);
+    for(const {model} of landmarks)model.setFocus?.(x,z);
+  }:undefined;
   function setQuality(profile){
     vegetation.setQuality(profile);
-    if(centreContact){
-      const opacity=style.centreContactOpacity[profile]??style.centreContactOpacity.balanced;
-      centreContact.material.opacity=opacity;
-      centreContact.visible=opacity>0;
-    }
+    for(const {definition,model} of landmarks)
+      model.setDetail(definition.detail[profile]??definition.detail.balanced);
   }
   // Ground deco around memory: simple warm glow / recognizable interaction point.
   let markerRoot=null;
@@ -106,5 +109,6 @@ export function buildWorld(scene,world,portals=[],evidence){
     cameraVolumes.push({center:[px,3.3,pz],radii:[1.8,.2,.18]});
   }
   return {canWalk,cameraObstacles,cameraVolumes,setQuality,setDetailFocus,vegetationMetrics,markerRoot,trees,
+    landmarks:landmarks.map(({definition:{build,...identity}})=>identity),
     counts:{paths:paths.length,buildings:buildings.length,water:waters.length,trees}};
 }
