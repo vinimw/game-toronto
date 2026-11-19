@@ -58,7 +58,40 @@ function roofMesh(ring){
   const geometry=new THREE.BufferGeometry();
   geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
   geometry.setIndex(indices);geometry.computeVertexNormals();
-  return new THREE.Mesh(geometry,new THREE.MeshLambertMaterial({color:0x484b43,flatShading:true,side:THREE.DoubleSide}));
+  return new THREE.Mesh(geometry,new THREE.MeshLambertMaterial({color:0x454a42,flatShading:true,side:THREE.DoubleSide}));
+}
+
+// A soft ground-only contact follows the walls. The southeast side extends
+// slightly farther away from the afternoon sun.
+function groundContact(ring,winding){
+  const normal=(a,b)=>{
+    const dx=b[0]-a[0],dz=b[1]-a[1],length=Math.hypot(dx,dz);
+    return length>.0001?[dz/length*winding,-dx/length*winding]:[0,0];
+  };
+  const outer=ring.map((p,i)=>{
+    const a=normal(ring[(i+ring.length-1)%ring.length],p);
+    const b=normal(p,ring[(i+1)%ring.length]);
+    const nx=a[0]+b[0],nz=a[1]+b[1],length=Math.hypot(nx,nz)||1;
+    const distance=.65+.55*Math.max(0,(nx+nz)*.71/length);
+    return [p[0]+nx/length*distance,p[1]+nz/length*distance];
+  });
+  const positions=[],colors=[];
+  const vertex=([x,z],alpha)=>{
+    positions.push(x,.011,z);
+    colors.push(1,1,1,alpha);
+  };
+  for(let i=0;i<ring.length;i++){
+    const j=(i+1)%ring.length;
+    vertex(ring[i],1);vertex(outer[i],0);vertex(ring[j],1);
+    vertex(outer[i],0);vertex(outer[j],0);vertex(ring[j],1);
+  }
+  const geometry=new THREE.BufferGeometry();
+  geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+  geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,4));
+  const mesh=new THREE.Mesh(geometry,new THREE.MeshBasicMaterial({color:0x505346,vertexColors:true,
+    transparent:true,depthWrite:false,side:THREE.DoubleSide,forceSinglePass:true}));
+  mesh.name='nature-centre-ground-contact';
+  return mesh;
 }
 
 export function buildNatureCentre(feature){
@@ -67,8 +100,8 @@ export function buildNatureCentre(feature){
   const group=new THREE.Group();
   group.name='high-park-nature-centre';
   const winding=Math.sign(THREE.ShapeUtils.area(ring.map(([x,z])=>new THREE.Vector2(x,z))));
-  const wood=[0x73503d,0x795440,0x76523e,0x7d5741];
-  const trim=0xd6c4a0, glass=0x455a53, door=0x405a4c;
+  const wood=[0x785846,0x7c5c49,0x795a46,0x805f4a];
+  const trim=0xcfc19f, glass=0x485e58, door=0x465d50;
   function quad(a,b,c,d,color){
     const {r,g,b:blue}=new THREE.Color(color);
     for(const p of [a,b,c,a,c,d]){positions.push(...p);colors.push(r,g,blue);}
@@ -81,8 +114,8 @@ export function buildNatureCentre(feature){
     const at=(u,y,depth=0)=>[a[0]+dx*u+nx*depth,y,a[1]+dz*u+nz*depth];
     const panel=(u0,u1,lo,hi,tint,depth=0)=>quad(at(u0,lo,depth),at(u1,lo,depth),at(u1,hi,depth),at(u0,hi,depth),tint);
 
-    panel(0,1,-.027,.11,0x655749);
-    panel(0,1,.11,.47,0x85594a);
+    panel(0,1,-.027,.11,0x645b4c);
+    panel(0,1,.11,.47,0x865e50);
     for(let j=0;j<10;j++){
       const lo=.47+(eave-.47)*j/10,hi=.47+(eave-.47)*(j+1)/10;
       panel(0,1,lo,hi,wood[(i*7+j*3+Math.floor(j/3))%wood.length]);
@@ -126,6 +159,7 @@ export function buildNatureCentre(feature){
   geometry.computeVertexNormals();
   const walls=new THREE.Mesh(geometry,new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide}));
   const roof=roofMesh(ring);
-  group.add(walls,roof);
-  return {group,roof,height:Math.max(...levels),forecourt};
+  const contact=groundContact(ring,winding);
+  group.add(walls,roof,contact);
+  return {group,roof,contact,height:Math.max(...levels),forecourt};
 }

@@ -29,28 +29,38 @@ export function pathWidth(feature){
   return feature.kind==='rail'?2.8:(widths[feature.tags?.highway]||3);
 }
 
-const realTrailWidths={footway:1.55,path:1.6,track:2.3,steps:1.6,cycleway:2.05,corridor:1.65};
+const realTrailWidths={footway:1.5,path:1.55,track:2.2,steps:1.6,cycleway:2.05,corridor:1.65};
+
+function mappedWidth(value){
+  if(typeof value!=='string'||!/^\s*\d+(?:\.\d+)?\s*m?\s*$/.test(value))return null;
+  const metres=parseFloat(value);
+  return metres>=.45&&metres<=30?metres:null;
+}
 
 // Presentation widths in metres. The importer and navigation retain their own data.
 export function realPathAppearance(feature){
-  const {highway,footway,surface}=feature.tags??{};
+  const {highway,footway,surface,width,est_width:estimated}=feature.tags??{};
+  const measured=mappedWidth(width)??mappedWidth(estimated);
   if(feature.kind==='rail')return {width:pathWidth(feature),surface:'rail'};
-  if(highway==='footway'&&footway==='crossing')return {width:1.45,surface:'paved',crossing:true};
-  if(highway in realTrailWidths||highway==='pedestrian'){
-    const hard=['asphalt','concrete','paved','paving_stones'].includes(surface);
-    return {width:realTrailWidths[highway]??3.3,surface:hard?'paved':'trail',softEdge:!hard};
+  if(highway==='footway'&&footway==='crossing')return {width:measured??1.45,surface:'paved',crossing:true};
+  if(Object.hasOwn(realTrailWidths,highway)||highway==='pedestrian'){
+    const hard=surface?['asphalt','concrete','paved','paving_stones'].includes(surface):footway==='sidewalk';
+    const fallback=footway==='sidewalk'?1.6:(realTrailWidths[highway]??3.3);
+    return {width:measured??fallback,surface:hard?'paved':'trail',shoulder:hard?.14:.32};
   }
-  return {width:highway==='unclassified'?4.5:pathWidth(feature),surface:'road'};
+  return {width:measured??(highway==='unclassified'?4.5:pathWidth(feature)),surface:'road'};
 }
 
 // Art direction for the OSM region. None of these values define map geometry.
 export const realParkStyle={
   ...parkStyle,
-  sky:0xf5e4ca, fog:[74,285],
-  hemisphere:{sky:0xfff1d7,ground:0x778872,strength:1.29},
-  sun:{color:0xffd3a7,strength:2.34,position:[-65,40,-54]},
-  ground:0x9dab7a, meadow:0x9aaf69, woodland:0x839666,
-  trail:0xcfb58b, paved:0xbeb29d, road:0xa7a297, verge:0xb9aa7b,
+  sky:0xf3e2c8, fog:[62,267],
+  hemisphere:{sky:0xffefd8,ground:0x748470,strength:1.23},
+  sun:{color:0xffd6ac,strength:2.45,position:[-65,40,-54]},
+  ground:0x9baa7a, meadow:0x99ab6d, woodland:0x829266,
+  trail:0xcdb389, paved:0xb9b3a6, road:0xa3a099,
+  contactOpacity:{low:0,balanced:.36,high:.44},
+  centreContactOpacity:{low:0,balanced:.19,high:.25},
   treeLimit:490, detailLimit:2120, treeSpacing:3.65,
   trees:[
     {shape:'round',height:6.3,width:2.16,depth:1.57,leaf:0x77934c},

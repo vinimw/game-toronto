@@ -28,7 +28,7 @@ export function buildWorld(scene,world,portals=[],evidence){
   const hemi=new THREE.HemisphereLight(style.hemisphere.sky,style.hemisphere.ground,style.hemisphere.strength);scene.add(hemi);
   const sun=new THREE.DirectionalLight(style.sun.color,style.sun.strength);sun.position.set(...style.sun.position);scene.add(sun);
   const texture=terrainTexture(real), groundGeometry=new THREE.PlaneGeometry(8000,8000);
-  worldUVs(groundGeometry,true);
+  worldUVs(groundGeometry,true,real);
   const ground=new THREE.Mesh(groundGeometry,new THREE.MeshLambertMaterial({color:style.ground,map:texture}));
   ground.rotation.x=-Math.PI/2;ground.position.y=-.1;scene.add(ground);
   const greens=world.features.filter(f=>f.kind==='green'),paths=world.features.filter(f=>f.kind==='path'||f.kind==='rail');
@@ -37,7 +37,7 @@ export function buildWorld(scene,world,portals=[],evidence){
     const wooded=feature.tags?.landuse==='forest'||(real&&feature.tags?.natural==='wood');
     const height=real&&feature.tags?.landuse==='grass'?-.021:real&&wooded?-.023:-.025;
     const mesh=flat(feature.points,height,wooded?style.woodland:style.meadow);
-    worldUVs(mesh.geometry,true);mesh.material.map=texture;scene.add(mesh);
+    worldUVs(mesh.geometry,true,real);mesh.material.map=texture;scene.add(mesh);
     evidence?.polygon(feature,mesh);
   }
   waters.forEach(feature=>{
@@ -46,6 +46,7 @@ export function buildWorld(scene,world,portals=[],evidence){
   });
   addPathBatches(scene,paths,style,pathWidth,texture,evidence?.strip,real);
   const furniture=[],cameraObstacles=[],clearings=[];
+  let centreContact;
   buildings.forEach((feature,index)=>{
     if(world.mode==='demo'&&feature.visual==='park-cafe'){
       const cafe=buildDemoCafe(feature);
@@ -54,6 +55,8 @@ export function buildWorld(scene,world,portals=[],evidence){
     }else if(world.mode==='osm'&&feature.osmType==='way'&&feature.osmId===NATURE_CENTRE_OSM_ID){
       const centre=buildNatureCentre(feature);scene.add(centre.group);
       evidence?.polygon(feature,centre.roof);
+      centreContact=centre.contact;
+      centreContact.material.opacity=style.centreContactOpacity.high;
       cameraObstacles.push({points:feature.points,height:centre.height});
       if(centre.forecourt)clearings.push(centre.forecourt);
     }else{
@@ -68,7 +71,15 @@ export function buildWorld(scene,world,portals=[],evidence){
   if(furniture.length)clearings.push([60,114.5,10]);
   const vegetation=world.vegetation===false?{trees:0,cameraVolumes:[],setQuality(){}}:
     plantPark(scene,world,portals,(point,radius)=>!canWalk(point[0],point[1],radius),clearings);
-  const {trees,cameraVolumes,setQuality,setDetailFocus,vegetationMetrics}=vegetation;
+  const {trees,cameraVolumes,setDetailFocus,vegetationMetrics}=vegetation;
+  function setQuality(profile){
+    vegetation.setQuality(profile);
+    if(centreContact){
+      const opacity=style.centreContactOpacity[profile]??style.centreContactOpacity.balanced;
+      centreContact.material.opacity=opacity;
+      centreContact.visible=opacity>0;
+    }
+  }
   // Ground deco around memory: simple warm glow / recognizable interaction point.
   let markerRoot=null;
   if(world.memory&&world.mode!=='osm'){

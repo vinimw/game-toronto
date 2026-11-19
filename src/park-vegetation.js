@@ -224,7 +224,8 @@ export function plantPark(scene,world,portals,blocked,clearings=[]){
   let contacts;
   for(const [shape,entries] of groups){
     const contact=shape==='contact';
-    const material=contact?new THREE.MeshBasicMaterial({map:contactTexture(),transparent:true,opacity:real?.37:.29,depthWrite:false}):
+    const material=contact?new THREE.MeshBasicMaterial({map:contactTexture(),transparent:true,
+      opacity:real?style.contactOpacity.high:.29,depthWrite:false}):
       new THREE.MeshLambertMaterial({flatShading:true,side:shape==='grass'?THREE.DoubleSide:THREE.FrontSide});
     const batch=new THREE.InstancedMesh(geometry[shape],material,entries.length);
     batch.name='park:'+shape;
@@ -274,7 +275,10 @@ export function plantPark(scene,world,portals,blocked,clearings=[]){
   return {trees:trees.length,cameraVolumes,vegetationMetrics:real?vegetationMetrics:undefined,
     setDetailFocus:real?updateDetails:undefined,setQuality(next){
     profile=Object.hasOwn(qualityProfiles,next)?next:'balanced';
-    if(contacts)contacts.visible=qualityProfiles[profile].contact;
+    if(contacts){
+      contacts.visible=qualityProfiles[profile].contact;
+      if(real)contacts.material.opacity=style.contactOpacity[profile];
+    }
     if(real){dirty=true;updateDetails(focusX,focusZ);}
     else for(const {batch,entries} of detailBatches)batch.count=Math.ceil(entries.length*qualityProfiles[profile].details);
   }};
