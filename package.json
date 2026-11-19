@@ -10,7 +10,8 @@
     "map:import": "python3 tools/import_osm.py",
     "check:importer": "python3 -m unittest discover -s tools -p 'test_*.py'",
     "test": "node --test tests/*.test.js && npm run check:importer",
-    "review:export": "node tools/review/export.mjs"
+    "review:export": "node tools/review/export.mjs",
+    "review:compare": "node tools/review/compare-cli.mjs"
   },
   "dependencies": {
     "three": "0.187.0"

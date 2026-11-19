@@ -9,14 +9,18 @@ import {latLonToLocal} from '../../src/geo.js';
 import {collectRenderedGeometry} from './rendered-geometry.js';
 import {validateNavigation} from './navigation.js';
 import {points} from './points.js';
+import {reviewPipelineVersion,reviewProfiles} from './profiles.js';
+import {benchmarkMotion,frameStatistics} from './motion-benchmark.js';
 
 if(!import.meta.env.DEV)throw new Error('Review mode requires the Vite development server.');
 
 const avatar=createCharacter(new THREE.Group());
-const renderer=new THREE.WebGLRenderer({antialias:true});
+const profileId=new URLSearchParams(location.search).get('profile')==='mobile'?'mobile':'desktop';
+const profile=reviewProfiles[profileId],quality=profile.quality;
+const renderer=new THREE.WebGLRenderer({antialias:profile.antialias});
 renderer.toneMapping=THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure=1.16;
-renderer.setPixelRatio(1);
+renderer.setPixelRatio(profile.rendererPixelRatio);
 renderer.setSize(innerWidth,innerHeight);
 document.body.append(renderer.domElement);
 
@@ -27,7 +31,6 @@ const manager=new SceneManager({manifest:regionManifest,loadRegion,avatar,buildS
   if(evidence)evidenceByScene.set(scene,evidence.parts);
   return stats;
 }});
-const quality='high';
 let camera, currentPoint, sceneLoadMs;
 function render(){
   const scene=manager.active.scene, fog=scene.fog;
@@ -139,7 +142,8 @@ async function prepare(id){
         visibleBoundsLocal:[camera.position.x+camera.left,camera.position.z-camera.top,camera.position.x+camera.right,camera.position.z-camera.bottom],
         visibleBoundsWgs84:{southwest:geographicPosition([camera.position.x+camera.left,camera.position.z-camera.bottom],world.origin),
           northeast:geographicPosition([camera.position.x+camera.right,camera.position.z-camera.top],world.origin)}})},
-    graphics:{profile:quality,...qualityProfiles[quality],pixelRatio:renderer.getPixelRatio(),antialias:true},
+    graphics:{profile:quality,...qualityProfiles[quality],pixelRatio:renderer.getPixelRatio(),antialias:profile.antialias},
+    ...(profile.mobileViewportSimulation?{deviceScaleFactor:devicePixelRatio,mobileViewportSimulation:true}:{}),
     viewport:{width:innerWidth,height:innerHeight},
     resolution:{width:renderer.domElement.width,height:renderer.domElement.height},
   };
@@ -156,14 +160,22 @@ async function measure(id){
     if(i>=16)intervals.push(now-previous);
     previous=now;
   }
-  intervals.sort((a,b)=>a-b);
-  const mean=intervals.reduce((sum,ms)=>sum+ms,0)/intervals.length;
   const {calls,triangles}=renderer.info.render;
   const vegetation=manager.active.stats.vegetationMetrics?.();
-  return {fps:mean>0?1000/mean:null,frameTimeMeanMs:mean,frameTimeP95Ms:intervals[Math.ceil(intervals.length*.95)-1],
-    samples:intervals.length,drawCalls:calls,triangles,rendererMemory:{...renderer.info.memory},
+  return {...frameStatistics(intervals),drawCalls:calls,triangles,rendererMemory:{...renderer.info.memory},
     ...(vegetation?{vegetation}:{}),
     sceneLoadMs,sceneLoadScope:'SceneManager.load: dados, construção e ativação; reutilizado nos pontos da mesma cena.'};
+}
+
+async function motion(){
+  const pose=await prepare('03-high-park-trilha');
+  if(pose.status!=='captured'||manager.active.world.mode!=='osm')
+    return {status:'unavailable',reason:'Recorte OSM necessário para o percurso.'};
+  const active=manager.active;
+  const result=await benchmarkMotion({active,avatar,camera,render,renderInfo:renderer.info.render,
+    route:validateNavigation(active)});
+  return {...result,graphics:pose.graphics,viewport:pose.viewport,resolution:pose.resolution,
+    sourceSha256:active.world.sourceSha256,deviceScaleFactor:devicePixelRatio};
 }
 
 function geography(){
@@ -195,5 +207,5 @@ function geography(){
     ],
   };
 }
-window.gameLoveReview={version:3,prepare,measure,geography,
+window.gameLoveReview={version:reviewPipelineVersion,prepare,measure,motion,geography,
   renderedGeometry:()=>evidenceByScene.get(manager.active?.scene)??[]};

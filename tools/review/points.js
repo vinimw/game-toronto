@@ -14,3 +14,21 @@ export const points=[
   {id:'06-high-park-ortografica',region:'high-park',entry:'toronto-gate',label:'High Park · ortográfica norte para cima',
     location:'spawn',projection:'orthographic',heading:0},
 ];
+
+const parkPoint=(id,label,reference,eye,look,profile='desktop')=>({
+  id,label,region:'high-park',entry:'toronto-gate',mode:'osm',heading:reference.heading,profile,
+  osm:{...reference.osm,label,eye,look},
+});
+
+points.push(
+  parkPoint('09-high-park-vegetacao-detalhe','High Park · detalhe da vegetação',points[3],
+    [-8.5,1.45,-.05],[-10.7,.5,5]),
+  parkPoint('10-high-park-trilha-detalhe','High Park · borda da trilha',points[3],
+    [2.5,1.15,0],[-.6,.05,3.8]),
+  parkPoint('11-high-park-nature-centre-detalhe','High Park · detalhe do Nature Centre',points[4],
+    [1,2.9,-1.7],[14,2.2,-1]),
+  parkPoint('12-high-park-trilha-mobile','High Park · trilha em viewport mobile',points[2],
+    points[2].osm.eye,points[2].osm.look,'mobile'),
+  parkPoint('13-high-park-nature-centre-mobile','High Park · Nature Centre em viewport mobile',points[4],
+    [-10,4,-2],[12,2.3,0],'mobile'),
+);

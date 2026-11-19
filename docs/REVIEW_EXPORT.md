@@ -7,6 +7,19 @@ npm ci
 npm run review:export
 ```
 
+Para comparar o último export com um ZIP preservado de uma versão anterior:
+
+```sh
+npm run review:compare -- --baseline /caminho/do/game-love-review-anterior.zip
+```
+
+O comando publica `artifacts/reviews/comparison/report.html`, um resumo
+`comparison.json` e pranchas SVG lado a lado. Para incluir a comparação
+no próprio ZIP e no HTML do novo export, use
+`npm run review:export -- --baseline /caminho/do/game-love-review-anterior.zip`.
+Guarde a referência em outro caminho antes de exportar, pois o ZIP
+padrão é substituído a cada execução.
+
 O exportador usa o Chromium do Playwright quando instalado e tenta o Google Chrome local em seguida. Para baixar o Chromium, execute `npx playwright-core install chromium`. Para selecionar outro binário compatível, use `REVIEW_BROWSER_PATH=/caminho/do/chromium npm run review:export`.
 
 O comando executa o build em um diretório temporário e roda os testes antes da captura. Reutiliza uma página de revisão do Vite nas portas 5173, 5174, 5175 ou 5177, quando disponível. Para apontar para outro servidor de desenvolvimento local, use `REVIEW_URL=http://127.0.0.1:5177 npm run review:export`. Caso necessário, o exportador cria um servidor em loopback a partir da porta 4178, que é encerrado ao final. Para sempre criar um servidor separado, use `REVIEW_ISOLATED=1 npm run review:export`. O navegador usa um perfil descartável.
@@ -21,10 +34,19 @@ O pacote fica em `artifacts/reviews/game-love-review.zip`, e a cópia aberta do 
 | `geographic-correspondence.json` | Extensão, hash da fonte, divergências por ID, cruzamentos, rota, limites e versão Git |
 | `screenshots/` | Seis vistas padronizadas mais referência e sobreposição OSM quando o recorte é carregado |
 | `geography/high-park-north.osm-source.json.gz` | Resposta de origem arquivada, com SHA-256 do JSON descompactado no relatório |
+| `report.html` | Relatório offline com imagens embutidas, métricas, geografia, ocorrências e comparação opcional |
+| `comparison.json` e `comparisons/` | Resumo e pranchas dos pares quando fornecido `--baseline` |
 
 A medição usa 75 amostras brutas de `requestAnimationFrame`, depois de 15 intervalos de aquecimento. A cena fica estática. O tempo de carregamento abrange dados, construção e ativação pelo `SceneManager`, e o mesmo valor aparece para os pontos que reutilizam a cena já carregada. As contagens de memória incluem geometrias e texturas do renderer, em unidades de recurso. FPS e frame time dependem da máquina, do navegador e da aceleração gráfica. Eles não substituem testes em celular físico.
 
 No High Park OSM, `vegetation.placed` enumera a vegetação procedural do recorte. `vegetation.grid` organiza árvores e instâncias de arbustos em quadrículas de norte para sul e de oeste para leste. `detailInstancesEnabled` informa quantas instâncias de detalhe foram habilitadas pelo perfil e pelo raio da câmera antes do descarte do renderer. O perfil está em `metadata.json`.
+
+O benchmark de movimento dura cerca de 20 s e usa o `PlayerController`,
+as colisões, a animação e a renderização do jogo a 1×. A direção segue
+a rota OSM validada, a partir do spawn da entrada norte, em Chromium
+desktop com perfil Alta. `performance.motion` inclui FPS, média, p50 e
+p95 dos intervalos, distância, duração, erros e média, mínimo e máximo
+de chamadas e triângulos. O percurso é separado das amostras estáticas.
 
 ## Pontos e origem geográfica
 
@@ -37,6 +59,19 @@ para cima e o metadado distingue a bbox dos dados da extensão visível da câme
 Os dados DEMO têm origem ilustrativa. Coordenadas intermediárias só são convertidas
 para referência geográfica quando o modo é OSM REAL.
 
+As vistas 09–11 detalham vegetação, transição trilha–grama e Nature
+Centre. As vistas 12–13 usam uma sessão Chromium com viewport 390 × 844,
+device scale factor 1, pixel ratio de renderização 1, perfil Equilibrada
+e antialiasing desativado. São vistas de viewport emulado. Os quadros
+estáticos usam o mesmo tempo inicial de animação, iluminação fixa e
+geração procedural com sementes estáveis.
+
+O comparador usa os IDs e confere posição, câmera, origem, hash OSM,
+resolução e configuração gráfica antes de calcular variações. Pares
+incompatíveis são marcados com os motivos. Mudanças de ambiente e dados
+legados incompletos são destacados para interpretação dos tempos. A
+avaliação visual continua sendo feita nas pranchas, sem um critério
+automático baseado em diferenças de pixels.
 
 ## Vídeo opcional
 
@@ -55,6 +90,6 @@ Revise o vídeo antes de compartilhar. Uma nova exportação volta a gerar o ZIP
 ## Problemas comuns
 
 - **Chromium ausente ou WebGL indisponível.** Instale o navegador indicado acima ou tente o Google Chrome atualizado. Restrições de execução de processos ou de portas locais no ambiente em que o comando roda podem impedir o Vite ou Chromium de iniciar.
-- **Pacote gerado com falhas.** O comando retorna código 1 após publicar os diagnósticos, quando consegue gerar um ZIP válido. Veja `metadata.json` e `console-errors.json`. Quando o processo falha antes dessa publicação, a última exportação permanece disponível.
+- **Pacote parcial.** Captura obrigatória ausente, falha de benchmark, de cartografia ou de teste torna o export parcial. O comando retorna código 1 após publicar os diagnósticos, quando consegue gerar um ZIP válido. Veja `report.html`, `metadata.json` e `console-errors.json`. Quando o processo falha antes dessa publicação, a última exportação permanece disponível.
 - **Captura indisponível.** Confira a origem e o motivo em `metadata.json`. Um ponto ausente ou obstruído é registrado individualmente, e os demais pontos ainda podem ser exportados.
 - **Exportação em andamento.** Aguarde o outro comando encerrar. Se tiver certeza de que um processo anterior foi encerrado abruptamente, remova o diretório vazio `artifacts/reviews/.export-lock` e tente novamente.

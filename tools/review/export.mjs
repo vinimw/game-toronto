@@ -1,16 +1,21 @@
 import {spawn,spawnSync} from 'node:child_process';
 import {access,mkdir,mkdtemp,readFile,rename,rm,writeFile} from 'node:fs/promises';
-import {join} from 'node:path';
+import {join,resolve} from 'node:path';
+import {parseArgs} from 'node:util';
 import {fileURLToPath} from 'node:url';
 import {chromium} from 'playwright-core';
 import {createServer} from 'vite';
 import {points} from './points.js';
 import {compareGeometry,cartographicSvg} from './cartography.mjs';
+import {reviewPipelineVersion,reviewProfiles} from './profiles.js';
+import {motionDurationMs} from './motion-benchmark.js';
+import {buildComparison,openReviewZip,writeComparisons} from './compare.mjs';
+import {writeReport} from './report.mjs';
 
 const root=fileURLToPath(new URL('../../',import.meta.url));
 const output=join(root,'artifacts/reviews');
 const route='/tools/review/index.html';
-const viewport={width:1280,height:720};
+const {viewport}=reviewProfiles.desktop;
 const startedAt=new Date().toISOString();
 const abort=new AbortController();
 for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>abort.abort(new Error('Exportação interrompida.')));
@@ -92,11 +97,17 @@ const safeMessage=message=>String(message)
   .replace(/(bearer\s+|(?:token|password|secret|api[_-]?key)\s*[:=]\s*)[^\s,;]+/gi,'$1[redacted]')
   .slice(0,1200);
 
-async function collect(browser,target,dir){
-  const page=await browser.newPage({viewport,deviceScaleFactor:1,locale:'pt-BR',timezoneId:'UTC',serviceWorkers:'block'});
-  const origin=new URL(target).origin;
+async function collectProfile(browser,target,dir,profileId){
+  const profile=reviewProfiles[profileId];
+  const page=await browser.newPage({viewport:profile.viewport,deviceScaleFactor:profile.deviceScaleFactor,
+    isMobile:profile.mobileViewportSimulation,hasTouch:profile.mobileViewportSimulation,
+    locale:'pt-BR',timezoneId:'UTC',serviceWorkers:'block'});
+  const url=new URL(target);
+  url.searchParams.set('profile',profileId);
+  const origin=url.origin;
   const issues=[],captures=[],metrics=[];
-  let geography={status:'unavailable'};
+  const selected=points.filter(point=>(point.profile??'desktop')===profileId);
+  let geography={status:'unavailable'},motion=null;
   const geographicFiles=[];
   let current=null;
   const record=(type,details)=>issues.push({type,captureId:current,...details});
@@ -118,20 +129,20 @@ async function collect(browser,target,dir){
     if(response.status()>=400)record('asset-http-error',{url:safeMessage(response.url()),status:response.status()});
   });
 
-  const evaluate=(method,id)=>page.evaluate(async ({method,id})=>{
+  const evaluate=(method,id,timeout=25000)=>page.evaluate(async ({method,id,timeout})=>{
     let timer;
     try{
       return await Promise.race([
         window.gameLoveReview[method](id),
-        new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Tempo excedido em '+method)),25000);}),
+        new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Tempo excedido em '+method)),timeout);}),
       ]);
     }finally{clearTimeout(timer);}
-  },{method,id});
+  },{method,id,timeout});
 
   try {
-    await page.goto(target,{waitUntil:'load',timeout:20000});
-    await page.waitForFunction(()=>window.gameLoveReview?.version===3,{},{timeout:12000});
-    for(const point of points){
+    await page.goto(url.href,{waitUntil:'load',timeout:20000});
+    await page.waitForFunction(version=>window.gameLoveReview?.version===version,reviewPipelineVersion,{timeout:12000});
+    for(const point of selected){
       abort.signal.throwIfAborted();
       current=point.id;
       const base={id:point.id,label:point.label,region:point.region};
@@ -160,7 +171,21 @@ async function collect(browser,target,dir){
         console.error('[review] falha em '+point.id+' · '+reason);
       }
     }
-    geography=await page.evaluate(()=>window.gameLoveReview.geography());
+    if(profileId==='desktop'){
+      current='motion-high-park';
+      try{
+        motion=await evaluate('motion',null,motionDurationMs+12000);
+      }catch(error){
+        const reason=safeMessage(error.message);
+        motion={status:'failed',reason};
+        record('motion-failed',{message:reason});
+      }
+      motion={...motion,errors:issues.filter(issue=>issue.captureId===current)};
+      if(motion.errors.length&&motion.status==='passed')motion.status='failed';
+      console.log('[review] Percurso: '+motion.status);
+      current=null;
+      geography=await page.evaluate(()=>window.gameLoveReview.geography());
+    }
     if(geography.status==='source-comparison'){
       const scene=captures.find(capture=>capture.id==='06-high-park-ortografica'&&capture.origin==='OSM REAL');
       const source=await readFile(join(root,'tools/data/high-park-north.osm-source.json'));
@@ -181,7 +206,7 @@ async function collect(browser,target,dir){
     }
   }catch(error){
     record('review-page-failed',{message:safeMessage(error.message)});
-    for(const point of points)if(!captures.some(capture=>capture.id===point.id)){
+    for(const point of selected)if(!captures.some(capture=>capture.id===point.id)){
       captures.push({id:point.id,label:point.label,region:point.region,status:'failed',reason:'Página de revisão indisponível.'});
     }
   }finally {await page.close();}
@@ -191,7 +216,7 @@ async function collect(browser,target,dir){
       issue.expected=true;issue.reason='Recorte OSM opcional ausente; o jogo carregou o High Park DEMO.';
     }
   }
-  return {captures,issues,metrics,geography,geographicFiles};
+  return {captures,issues,metrics,geography,geographicFiles,motion};
 }
 
 async function publish(stage,bundle,archive){
@@ -210,6 +235,8 @@ async function publish(stage,bundle,archive){
 }
 
 async function main(){
+  const {values:{baseline}}=parseArgs({options:{baseline:{type:'string'}}});
+  const prior=baseline?openReviewZip(resolve(baseline)):null;
   await mkdir(output,{recursive:true});
   const lock=join(output,'.export-lock');
   try {await mkdir(lock);}catch(error){
@@ -234,29 +261,50 @@ async function main(){
     closeOnAbort=()=>{void browser.close().catch(()=>{});};
     abort.signal.addEventListener('abort',closeOnAbort,{once:true});
     abort.signal.throwIfAborted();
-    const {captures,issues,metrics,geography,geographicFiles}=await collect(browser,started.target,bundle);
+    const desktop=await collectProfile(browser,started.target,bundle,'desktop');
+    const mobile=await collectProfile(browser,started.target,bundle,'mobile');
+    const {geography,geographicFiles,motion}=desktop;
+    const captures=[...desktop.captures,...mobile.captures];
+    const issues=[...desktop.issues,...mobile.issues];
+    const metrics=[...desktop.metrics,...mobile.metrics];
     abort.signal.throwIfAborted();
     geography.git=git;
-    const metadata={schemaVersion:1,exportedAt:startedAt,git,checks,browser:{engine:'chromium',version:browser.version(),headless:true},
+    const browserInfo={engine:'chromium',version:browser.version(),headless:true};
+    const runtime={browser:browserInfo,platform:process.platform,architecture:process.arch};
+    const success=captures.filter(c=>c.status==='captured').length;
+    const unavailable=captures.filter(c=>c.status==='unavailable').length;
+    const failed=captures.length-success-unavailable;
+    const partial=success!==points.length||geographicFiles.length!==3||
+      geography.cartography?.status!=='within-tolerance'||geography.navigation?.status!=='passed'||
+      motion?.status!=='passed'||Object.values(checks).some(check=>check.status!=='passed')||
+      issues.some(issue=>!issue.expected);
+    const metadata={schemaVersion:2,pipelineVersion:reviewPipelineVersion,status:partial?'partial':'complete',
+      exportedAt:startedAt,git,checks,browser:browserInfo,runtime,profiles:reviewProfiles,
+      reproducibility:{animationTimeSeconds:0,lighting:'Iluminação fixa da cena, sem relógio de dia.',
+        proceduralSeedPolicy:'Sementes fixas definidas no gerador versionado pelo commit Git.'},
       viewport,resolution:viewport,captures,geographicEvidence:geographicFiles,video:{status:'not-generated',reason:'MP4 opcional por inclusão manual.'}};
-    const performance={schemaVersion:1,environment:'Navegador automatizado. Os resultados não equivalem ao desempenho em dispositivos móveis reais.',
-      method:'Intervalo bruto entre requestAnimationFrame. 15 intervalos de aquecimento e 75 amostras por vista estática.',captures:metrics};
+    const performance={schemaVersion:2,runtime,environment:'Navegador automatizado. Os resultados não equivalem ao desempenho em dispositivos móveis reais.',
+      method:'Intervalo bruto entre requestAnimationFrame. 15 intervalos de aquecimento e 75 amostras por vista estática.',
+      captures:metrics,motion:motion?{...motion,runtime}:null};
     const json=(file,value)=>writeFile(join(bundle,file),JSON.stringify(value,null,2)+'\n');
     await Promise.all([json('metadata.json',metadata),json('performance.json',performance),json('console-errors.json',issues),json('geographic-correspondence.json',geography)]);
 
+    const imageFiles=[...geographicFiles.filter(file=>file.endsWith('.png')),...captures.flatMap(capture=>capture.file?[capture.file]:[])];
+    const current={metadata,performance,readImage:file=>readFile(join(bundle,file))};
+    const comparison=prior?await buildComparison(prior,current):null;
+    const comparisonFiles=comparison?await writeComparisons(bundle,comparison):[];
+    await writeReport(join(bundle,'report.html'),{metadata,performance,geography,issues,imageFiles,
+      readImage:current.readImage,comparison});
+
     // Explicit allowlist. Nothing outside this staging directory can enter the archive.
-    const files=['metadata.json','performance.json','console-errors.json','geographic-correspondence.json',...geographicFiles,...captures.flatMap(capture=>capture.file?[capture.file]:[])];
+    const files=['metadata.json','performance.json','console-errors.json','geographic-correspondence.json',
+      'report.html',...geographicFiles,...captures.flatMap(capture=>capture.file?[capture.file]:[]),...comparisonFiles];
     if((await run('zip',['-q','-X',archive,...files],{cwd:bundle})).code!==0)
       throw new Error('Falha ao criar o ZIP.');
     if((await run('unzip',['-tq',archive],{quiet:true})).code!==0)
       throw new Error('O ZIP não passou na verificação de integridade.');
     await publish(stage,bundle,archive);
-    const succeeded=captures.filter(c=>c.status==='captured').length;
-    const failed=captures.filter(c=>c.status==='failed').length;
-    const unavailable=captures.length-succeeded-failed;
-    const partial=!succeeded||failed||Object.values(checks).some(check=>check.status!=='passed')||
-      issues.some(issue=>!issue.expected);
-    console.log('[review] '+(partial?'Pacote gerado com falhas':'Sucesso')+' · '+succeeded+' capturas, '+unavailable+' indisponíveis, '+failed+' falharam.');
+    console.log('[review] '+(partial?'Pacote parcial':'Sucesso')+' · '+success+' capturas, '+unavailable+' indisponíveis, '+failed+' falharam.');
     console.log('[review] ZIP: '+join(output,'game-love-review.zip'));
     if(partial)process.exitCode=1;
   }finally{
