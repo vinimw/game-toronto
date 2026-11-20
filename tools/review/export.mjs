@@ -169,7 +169,7 @@ async function collectProfile(browser,target,dir,profileId,expanded=false,legacy
         }
         const file='screenshots/'+result.fileStem+'.png';
         const screenshot=await page.screenshot({path:join(dir,file),animations:'disabled',timeout:10000});
-        if(point.id==='71-grenadier-pond'){
+        if(point.id==='71-grenadier-pond'||point.pondOblique){
           const dominant=await page.evaluate(async png=>{
             const image=new Image();image.src='data:image/png;base64,'+png;await image.decode();
             const canvas=document.createElement('canvas');canvas.width=96;canvas.height=54;
@@ -390,7 +390,11 @@ async function main(){
       reproducibility:{animationTimeSeconds:0,lighting:'Iluminação fixa da cena, sem relógio de dia.',
         proceduralSeedPolicy:'Sementes fixas definidas no gerador versionado pelo commit Git.'},
       viewport,resolution:viewport,captures,geographicEvidence:geographicFiles,entranceComparison:'north-entrance-comparison.html',
-      video:cameraEvaluation?{status:movementTrace.status==='passed'&&automaticCamera.status==='passed'&&coupledPrototype.status==='passed'&&coupledCamera.status==='passed'?'validated':'failed',files:videos,encodingFps:Number(videoFps)}
+      video:pond.video?{status:pond.status==='passed'?'validated':'failed',files:[pond.video,...videos],
+        artifacts:[{file:pond.video,status:pond.status,encodingFps:pond.playback?.fps,diagnostic:'grenadier-pond.json'},
+          ...(cherry.video?[{file:cherry.video,status:cherry.status,encodingFps:cherry.playback?.fps,diagnostic:'cherry-hill.json'}]:[]),
+          ...streaming.videos.map(file=>({file,status:streaming.status,diagnostic:'world-streaming.json'})),
+          ...videos.map(file=>({file,encodingFps:Number(videoFps)}))]}:cameraEvaluation?{status:movementTrace.status==='passed'&&automaticCamera.status==='passed'&&coupledPrototype.status==='passed'&&coupledCamera.status==='passed'?'validated':'failed',files:videos,encodingFps:Number(videoFps)}
         :{status:'not-generated',reason:'Use --camera-evaluation para gravar os clipes.'}};
     const performance={schemaVersion:2,runtime,environment:'Navegador automatizado. Os resultados não equivalem ao desempenho em dispositivos móveis reais.',
       method:'Intervalo bruto entre requestAnimationFrame. 15 intervalos de aquecimento e 75 amostras por vista estática.',

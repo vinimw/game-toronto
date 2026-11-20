@@ -60,12 +60,16 @@ function frameCamera(point,world,[x,z]){
       Math.min(...ring.map(p=>p[0])),Math.min(...ring.map(p=>p[1])),
       Math.max(...ring.map(p=>p[0])),Math.max(...ring.map(p=>p[1])),
     ]:world.bbox;
-    const halfHeight=Math.max(south-north,(east-west)/aspect)*.54;
+    const halfHeight=point.pondOblique?145:Math.max(south-north,(east-west)/aspect)*.54;
     const view=new THREE.OrthographicCamera(-halfHeight*aspect,halfHeight*aspect,halfHeight,-halfHeight,.1,point.pond?1500:300);
     const centerX=(west+east)/2,centerZ=(north+south)/2;
     view.position.set(centerX,point.pond?520:115,centerZ);
     view.up.set(0,0,-1);
-    view.lookAt(centerX,0,centerZ);
+    if(point.pondOblique){
+      view.position.set(-125,228,1014);
+      view.up.set(0,1,0);
+      view.lookAt(-345,-36,853);
+    }else view.lookAt(centerX,0,centerZ);
     return view;
   }
   const view=new THREE.PerspectiveCamera(53,aspect,.1,1600);

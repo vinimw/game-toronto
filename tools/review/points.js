@@ -105,7 +105,7 @@ points.push(
 for(const [id,label,local,eye,look,profile] of [
   ['64','perspectiva pedestre',[-205,828],[-48,4,4],[-110,0,50]],
   ['65','panorama',[-205,828],[-38,16,4],[-150,-9,60]],
-  ['66','margem naturalizada',[-205,828],[-71,2.8,40],[-88,-.5,50]],
+  ['66','margem naturalizada',[-205,828],[-69,2.4,21],[-82,-.15,5]],
   ['67','ondulação e reflexos',[-205,828],[-73,4.8,48],[-109,-.3,64]],
   ['68','transição da trilha à margem',[-205,828],[-5,4,-6],[-111,-8,36]],
   ['69','encosta',[-201,774],[30,22,-14],[-122,-9,75]],
@@ -115,3 +115,8 @@ for(const [id,label,local,eye,look,profile] of [
 ]){
   points.push({...cherryView(id+'-grenadier-pond','Grenadier Pond · '+label,local,eye,look,profile),pond:true,...(id==='71'?{projection:'orthographic'}:{})});
 }
+
+const pondReference=points.find(point=>point.id==='71-grenadier-pond');
+pondReference.osmFile='grenadier-pond-geographic-reference';
+points.push({...pondReference,id:'73-grenadier-pond-aerial-3d',osmFile:'grenadier-pond-aerial-3d',
+  label:'Grenadier Pond · vista 3D oblíqua',pondOblique:true});

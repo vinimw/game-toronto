@@ -5,6 +5,7 @@ import {frameStatistics} from './motion-benchmark.js';
 import {startViewportVideo} from './full-viewport-video.mjs';
 
 const waitLod=(page,lod)=>page.waitForFunction(lod=>window.inspectWorldStreaming().cherryHill.lod===lod,lod,{timeout:12000});
+const percentile99=values=>[...values].sort((a,b)=>a-b)[Math.ceil(values.length*.99)-1]??null;
 const stats=page=>page.evaluate(()=>window.inspectWorldStreaming());
 // GLBs are shared with the west grove. Verify local sector release even if
 // another grove still holds a lease on the same decoded model.
@@ -100,7 +101,7 @@ export async function evaluateCherryHill(browser,target,bundle,safeMessage,{pond
               overlay.textContent=`${(ms/1000).toFixed(1)} s · ${label} · ${cherryHill.lod??'base'} · cobertura ${Math.round(coverage*100)}% · Lago ${grenadierPond.state??'base'} (${grenadierPond.shoreInstances})`;
               last=now;
             }
-            if((yaw===0?position[2]<=destination:position[2]>=destination)||now-start>=28000)
+            if((Math.cos(yaw)>0?position[2]<=destination:position[2]>=destination)||now-start>=28000)
               resolve({label,intervals:intervals.slice(1),samples,events,jumps,end:position});
             else requestAnimationFrame(tick);
           }
@@ -109,24 +110,36 @@ export async function evaluateCherryHill(browser,target,bundle,safeMessage,{pond
       }finally{await page.keyboard.up('w');}
     }
     if(pond){
+      const shoreYaw=2.3;
       legs.push(await walk('Aproximação por Cherry Hill',Math.PI,780,5));
-      legs.push(await walk('Vista da margem',Math.PI,840,5));
-      legs.push(await walk('Afastamento',0,508,5));
-      legs.push(await walk('Retorno à margem',Math.PI,815,5));
+      legs.push(await walk('Descida para a margem',shoreYaw,825,3));
+      legs.push(await walk('Junto à água',shoreYaw,840,1));
+      const [shoreX,,shoreZ]=await position();
+      await stage([shoreX,shoreZ],Math.PI/2);
+      await page.evaluate(()=>{
+        document.querySelector('#cherry-streaming-overlay').textContent='Margem leste · pausa para observar o lago';
+      });
+      await page.waitForTimeout(3400);
+      legs.push(await walk('Subida de volta à trilha',shoreYaw-Math.PI,780,3));
+      legs.push(await walk('Afastamento',0,498,5));
+      legs.push(await walk('Retorno à margem',Math.PI,780,5));
+      legs.push(await walk('Margem reativada',shoreYaw,840,3));
       const video='grenadier-pond-walk.webm';
       const playback=await recording.stop(join(bundle,video));
       const samples=legs.flatMap(leg=>leg.samples);
       const timeline=[];
       for(const sample of samples){
         const {state,coverage}=sample.grenadierPond;
-        if(timeline.at(-1)?.state!==state)timeline.push({ms:sample.ms,state,coverage});
+        if(timeline.at(-1)?.state!==state)timeline.push({ms:sample.ms,position:sample.position,...sample.grenadierPond});
       }
       const first=timeline.findIndex(event=>event.state==='active');
       const released=timeline.findIndex((event,index)=>index>first&&event.state==='idle');
       const returned=timeline.findIndex((event,index)=>index>released&&event.state==='active');
-      const complete=legs.every((leg,i)=>Math.abs(leg.end[2]-[780,840,508,815][i])<3);
+      const complete=legs.every((leg,i)=>Math.abs(leg.end[2]-[780,825,840,780,498,780,840][i])<3);
       const passed=complete&&first>=0&&released>first&&returned>released&&errors.length===0;
       return {status:passed?'passed':'failed',video,playback,complete,timeline,errors,
+        coverageDefinition:'Fração alvo dos pixels da margem liberada pela máscara opaca por quadro. 1 libera todos os pixels elegíveis; não mede área de margem visível.',
+        p99Ms:percentile99(legs.flatMap(leg=>leg.intervals)),
         route:legs.map(({intervals,...leg})=>({...leg,...frameStatistics(intervals)}))};
     }
     legs.push(await walk('Aproximação',Math.PI,733,3));

@@ -21,3 +21,17 @@ As capturas 41, 42 e 44 mantêm os enquadramentos anteriores. Entre as
 capturas 64–72, apenas 66, 67 e 71 mudam de câmera. Elas servem para
 revisão visual, sem comparação direta de desempenho por enquadramento.
 A vista 71 usa os limites locais do polígono OSM e norte para cima.
+
+## Aceite v1.2
+
+A máscara visual do solo usa manchas com bordas irregulares e cor gradual.
+Os agrupamentos de juncos são aproximações inspiradas na naturalização
+registrada pela Prefeitura, figura 4, e na foto de primavera citada acima.
+A faixa de solo, as posições de plantas e os tamanhos de pedras são
+estilizados. Somente o polígono OSM e a altitude HRDEM são geográficos.
+Nenhuma foto foi incorporada aos assets.
+
+A referência de norte para cima é a renderização vertical do OSM e HRDEM.
+A vista ortográfica oblíqua separada mostra a mesma cena com profundidade.
+A captura 66 mudou de câmera. O comparador mantém esse par separado
+dos enquadramentos equivalentes.

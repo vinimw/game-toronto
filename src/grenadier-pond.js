@@ -59,14 +59,18 @@ export function buildPondShore(world,pond,quality){
     !segments.some(([start,end,width])=>nearSegment(point,start,end)<width+1.6);
   const terrain=world.terrain;
   function patch([x,z],radius,tint){
-    const center=[x,terrain.at(x,z)+.042,z];
+    const center=[x,terrain.at(x,z)+.045,z];
+    const rim=new THREE.Color(0x859253);
     for(let i=0;i<7;i++){
-      const edge=angle=>[x+Math.cos(angle)*radius,z+Math.sin(angle)*radius*.7];
+      const edge=angle=>{
+        const outline=radius*(1+.19*Math.sin(angle*3+x+z));
+        return [x+Math.cos(angle)*outline,z+Math.sin(angle)*outline*.7];
+      };
       const a=edge(i/7*Math.PI*2),b=edge((i+1)/7*Math.PI*2);
       if(!clear(a)||!clear(b))continue;
       patches.push(...center,a[0],terrain.at(...a)+.042,a[1],b[0],terrain.at(...b)+.042,b[1]);
       patchColor.setHex(tint).multiplyScalar(.88+random()*.18);
-      for(let j=0;j<3;j++)patchColors.push(patchColor.r,patchColor.g,patchColor.b);
+      patchColors.push(...patchColor.toArray(),...rim.toArray(),...rim.toArray());
     }
   }
   for(const [i,b] of pond.points.entries()){
@@ -76,7 +80,7 @@ export function buildPondShore(world,pond,quality){
     for(let t=0;t<1;t+=(quality==='high'?1.3:2.1)/length){
       const x=THREE.MathUtils.lerp(a[0],b[0],t),z=THREE.MathUtils.lerp(a[1],b[1],t);
       if(x<west||x>east||z<north||z>south||Math.sin(z*.113)+Math.sin(z*.041)<-.25)continue;
-      const side=.65+random()*10,dx=(b[1]-a[1])/length*side,dz=(a[0]-b[0])/length*side;
+      const side=.65+random()**1.65*10,dx=(b[1]-a[1])/length*side,dz=(a[0]-b[0])/length*side;
       const point=[x+dx,z+dz];
       if(pointInPolygon(point,pond.points)){point[0]=x-dx;point[1]=z-dz;}
       if(!clear(point))continue;
@@ -85,7 +89,11 @@ export function buildPondShore(world,pond,quality){
       const scale=.55+random()*.8;
       const kind=random()<.23?1:side>4&&random()<.23?2:0;
       items[kind].push([point[0],y,point[1],scale,random()*Math.PI*2]);
-      if(side<5)patch(point,.55+random()*1.35,side<2?0x695744:0x74734b);
+      if(side<5)patch(point,.85+random()*1.55,side<2?0x665545:0x74734b);
+      if(kind===0&&side<6){
+        const cluster=[point[0]+(random()-.5)*1.6,point[1]+(random()-.5)*1.6];
+        if(clear(cluster))items[0].push([cluster[0],terrain.at(...cluster),cluster[1],scale*.8,random()*Math.PI*2]);
+      }
       if(kind===2)patch(point,1.1*scale,0x5f653d);
     }
   }
