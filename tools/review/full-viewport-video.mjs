@@ -10,8 +10,6 @@ import {pipeline} from 'node:stream/promises';
 import {setTimeout as delay} from 'node:timers/promises';
 
 const require=createRequire(import.meta.url);
-const fps=12;
-const interval=1000/fps;
 
 function ffmpegPath(){
   const root=dirname(require.resolve('playwright-core/package.json'));
@@ -19,7 +17,7 @@ function ffmpegPath(){
   return process.env.REVIEW_FFMPEG??registry.findExecutable('ffmpeg').executablePath();
 }
 
-async function encode(frames,output){
+async function encode(frames,output,fps){
   const ffmpeg=ffmpegPath();
   const encoders=spawnSync(ffmpeg,['-encoders'],{encoding:'utf8'});
   if(encoders.error||encoders.status!==0)throw new Error('FFmpeg do Playwright indisponível.',{cause:encoders.error});
@@ -40,7 +38,7 @@ async function encode(frames,output){
   if(input.status==='rejected')throw input.reason;
 }
 
-async function validate(context,output,references,viewport,frameCount){
+async function validate(context,output,references,viewport,frameCount,fps){
   const decoded=await mkdtemp(join(tmpdir(),'review-frames-'));
   let playback;
   try{
@@ -95,7 +93,9 @@ async function validate(context,output,references,viewport,frameCount){
   }
 }
 
-export async function startViewportVideo(page,viewport){
+export async function startViewportVideo(page,viewport,fps=24){
+  if(![12,24].includes(fps))throw new RangeError('A gravação admite 12 ou 24 FPS.');
+  const interval=1000/fps;
   const geometry=await page.evaluate(()=>{
     const rect=selector=>{
       const {x,y,width,height}=document.querySelector(selector).getBoundingClientRect();
@@ -138,13 +138,13 @@ export async function startViewportVideo(page,viewport){
         while(index+1<captures.length&&captures[index+1].at<=at)index++;
         frames.push(captures[index].jpeg);
       }
-      await encode(frames,output);
+      await encode(frames,output,fps);
       const references=[.2,.55,.85].map(fraction=>{
         const index=Math.floor(frames.length*fraction);
         return {index,jpeg:frames[index].toString('base64')};
       });
-      const playback=await validate(page.context(),output,references,viewport,frames.length);
-      return {geometry,fps,sourceFrames:captures.length,encodedFrames:frames.length,playback};
+      const playback=await validate(page.context(),output,references,viewport,frames.length,fps);
+      return {geometry,fps,sourceFrames:captures.length,sourceFramesPerSecond:1000*captures.length/stoppedAt,encodedFrames:frames.length,playback};
     },
   };
 }

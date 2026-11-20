@@ -114,11 +114,11 @@ export function plantPark(scene,world,portals,blocked,clearings=[]){
     contact:new THREE.PlaneGeometry(2,2).rotateX(-Math.PI/2),
   };
   const groups=new Map(), dummy=new THREE.Object3D(), color=new THREE.Color();
-  function add(shape,x,y,z,sx,sy,sz,tint){
+  function add(shape,x,y,z,sx,sy,sz,tint,treeId){
     const entries=groups.get(shape)||[];
     if(!groups.has(shape))groups.set(shape,entries);
     dummy.position.set(x,y,z);dummy.scale.set(sx,sy,sz);dummy.rotation.y=rand()*Math.PI*2;dummy.updateMatrix();
-    entries.push({x,z,matrix:dummy.matrix.clone(),color:color.set(tint).multiplyScalar(.86+rand()*.24).clone()});
+    entries.push({x,z,treeId,matrix:dummy.matrix.clone(),color:color.set(tint).multiplyScalar(.86+rand()*.24).clone()});
   }
   const trees=[], cameraVolumes=[];
   const limit=Math.min(style.treeLimit,Math.ceil((maxX-minX)*(maxZ-minZ)/460));
@@ -144,24 +144,24 @@ export function plantPark(scene,world,portals,blocked,clearings=[]){
     const spacing=real&&type!=='wood'?style.treeSpacing+.35:style.treeSpacing;
     if(real&&(!type||type==='open'))return false;
     if(!clear(point,width*1.25)||trees.some(([x,z])=>Math.hypot(x-point[0],z-point[1])<spacing))return false;
-    const [x,z]=point;trees.push(point);
+    const [x,z]=point,treeId=`tree:${trees.length}`;trees.push(point);
     const crownY=height-depth*.65;
     const trunkWidth=real?scale*(.77+width*.18):scale;
-    add('trunk',x,crownY*.5,z,trunkWidth,crownY,trunkWidth,0x826249);
-    add(tree.shape,x,crownY,z,width,depth,width*.9,tree.leaf);
+    add('trunk',x,crownY*.5,z,trunkWidth,crownY,trunkWidth,0x826249,treeId);
+    add(tree.shape,x,crownY,z,width,depth,width*.9,tree.leaf,treeId);
     if(tree.shape==='spread'||tree.shape==='round'){
       const angle=real?rand()*Math.PI*2:0;
       const cx=x+width*(real?.52*Math.cos(angle):.53),cz=z+width*(real?.52*Math.sin(angle):.2);
-      add(tree.shape,cx,crownY-depth*.29,cz,width*.72,depth*.71,width*.72,tree.leaf);
-      cameraVolumes.push({center:[cx,crownY-depth*.29,cz],radii:[width*.74,depth*.75,width*.74]});
+      add(tree.shape,cx,crownY-depth*.29,cz,width*.72,depth*.71,width*.72,tree.leaf,treeId);
+      cameraVolumes.push({id:treeId,kind:'tree',center:[cx,crownY-depth*.29,cz],radii:[width*.74,depth*.75,width*.74]});
     }
     if(tree.shape==='spire'){
-      add('spire',x,crownY+depth*.65,z,width*.68,depth*.62,width*.66,tree.leaf);
-      cameraVolumes.push({center:[x,crownY+depth*.65,z],radii:[width*.68,depth*.62,width*.66]});
+      add('spire',x,crownY+depth*.65,z,width*.68,depth*.62,width*.66,tree.leaf,treeId);
+      cameraVolumes.push({id:treeId,kind:'tree',center:[x,crownY+depth*.65,z],radii:[width*.68,depth*.62,width*.66]});
     }
     add('contact',x+(real?1.05:.4),.009,z+(real?.86:.24),width*(real?1.8:1.22),1,width*(real?1.32:.86),real?0x46583e:0x596d4a);
-    cameraVolumes.push({center:[x,crownY,z],radii:[width,depth,width]});
-    cameraVolumes.push({center:[x,crownY/2,z],radii:[.32*trunkWidth,crownY*.58,.32*trunkWidth]});
+    cameraVolumes.push({id:treeId,kind:'tree',center:[x,crownY,z],radii:[width,depth,width]});
+    cameraVolumes.push({id:treeId,kind:'tree',center:[x,crownY/2,z],radii:[.32*trunkWidth,crownY*.58,.32*trunkWidth]});
     return true;
   }
   if(real){
@@ -222,6 +222,22 @@ export function plantPark(scene,world,portals,blocked,clearings=[]){
   geometry.shrub=geometry.stone;
   const detailBatches=[];
   let contacts;
+  const treeInstances=new Map();
+  // Keep the instance transform invertible for the lighting shader.
+  const invisibleMatrix=new THREE.Matrix4().makeScale(.0001,.0001,.0001).setPosition(0,-10,0);
+  let hiddenTrees=new Set();
+  function setCameraOccluders(ids){
+    for(const id of hiddenTrees)if(!ids.has(id))updateTree(id,true);
+    for(const id of ids)if(!hiddenTrees.has(id))updateTree(id,false);
+    hiddenTrees=ids;
+  }
+  function updateTree(id,visible){
+    for(const {batch,index,matrix} of treeInstances.get(id)??[]){
+      batch.setMatrixAt(index,visible?matrix:invisibleMatrix);
+      batch.instanceMatrix.addUpdateRange(index*16,16);
+      batch.instanceMatrix.needsUpdate=true;
+    }
+  }
   for(const [shape,entries] of groups){
     const contact=shape==='contact';
     const material=contact?new THREE.MeshBasicMaterial({map:contactTexture(),transparent:true,
@@ -229,7 +245,12 @@ export function plantPark(scene,world,portals,blocked,clearings=[]){
       new THREE.MeshLambertMaterial({flatShading:true,side:shape==='grass'?THREE.DoubleSide:THREE.FrontSide});
     const batch=new THREE.InstancedMesh(geometry[shape],material,entries.length);
     batch.name='park:'+shape;
-    entries.forEach(({matrix,color},i)=>{batch.setMatrixAt(i,matrix);batch.setColorAt(i,color);});
+    entries.forEach(({matrix,color,treeId},i)=>{
+      batch.setMatrixAt(i,matrix);batch.setColorAt(i,color);
+      if(!treeId)return;
+      if(!treeInstances.has(treeId))treeInstances.set(treeId,[]);
+      treeInstances.get(treeId).push({batch,index:i,matrix});
+    });
     batch.computeBoundingSphere();
     scene.add(batch);
     if(contact)contacts=batch;
@@ -272,7 +293,7 @@ export function plantPark(scene,world,portals,blocked,clearings=[]){
       detailInstancesEnabled:detailsEnabled,grid:{bounds,order:'Norte a sul nas linhas, oeste a leste nas colunas.',
         treeCounts:grid('trunk'),shrubInstanceCounts:grid('shrub')}};
   }
-  return {trees:trees.length,cameraVolumes,vegetationMetrics:real?vegetationMetrics:undefined,
+  return {trees:trees.length,cameraVolumes,setCameraOccluders,vegetationMetrics:real?vegetationMetrics:undefined,
     setDetailFocus:real?updateDetails:undefined,setQuality(next){
     profile=Object.hasOwn(qualityProfiles,next)?next:'balanced';
     if(contacts){

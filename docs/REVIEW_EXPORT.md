@@ -169,3 +169,22 @@ O clipe `movement-diagnostics.webm` inclui a sequência numerada do
 movimento lateral até a diagonal com giro manual. O JSON registra
 a liberação dos controles, o fim do movimento, o acionamento, o alvo,
 os quadros da interpolação e o término ou interrupção da recentralização.
+
+O Review Export v3 grava a 24 FPS por padrão com `--camera-evaluation`.
+Para uma exportação mais rápida, use
+`npm run review:export -- --camera-evaluation --video-fps 12`.
+Esses valores são a taxa de codificação do WebM. O relatório guarda
+separadamente a taxa de screenshots de origem e as métricas do jogo.
+Se a captura produzir menos quadros que a taxa de codificação, alguns
+quadros são repetidos para preservar a duração.
+
+O arquivo `movement-diagnostics.json` contém a distância desejada e real,
+a variação por quadro, o estado da obstrução, o ID OSM do edifício ou os
+identificadores procedurais das árvores ocultadas, e as ocorrências de
+proximidade excessiva. O percurso lateral junto à Chess House é
+repetido por teclado e joystick. O teste confere enquadramento e linha
+de visão em alturas representativas da personagem, além do deslocamento
+da câmera em relação a ela. Os vídeos identificam esse percurso extra
+quando a sessão é reposicionada para o teste. Os quatro cenários de
+movimento exigem rastros de recentralização concluída e interrompida
+para passar.

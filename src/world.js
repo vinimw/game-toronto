@@ -49,21 +49,22 @@ export function buildWorld(scene,world,portals=[],evidence){
   const landmarks=[];
   buildings.forEach((feature,index)=>{
     const definition=findLandmark(world,feature);
+    const blocker={kind:'building',id:feature.osmId??null,points:feature.points};
     if(world.mode==='demo'&&feature.visual==='park-cafe'){
       const cafe=buildDemoCafe(feature);
       scene.add(cafe.group);furniture.push(...cafe.obstacles);
-      cameraObstacles.push({points:feature.points,height:cafe.ridge});
+      cameraObstacles.push({...blocker,height:cafe.ridge});
     }else if(definition){
       const model=definition.build(feature);
       scene.add(model.group);
       landmarks.push({definition,model});
       evidence?.polygon(feature,model.roof);
-      cameraObstacles.push({points:feature.points,height:model.height});
+      cameraObstacles.push({...blocker,height:model.height});
       if(model.forecourt)clearings.push(model.forecourt);
     }else{
       const mesh=makeBuilding(feature,index);
       if(mesh){scene.add(mesh);evidence?.polygon(feature,mesh.children[1]);}
-      cameraObstacles.push({points:feature.points,height:buildingHeight(feature.tags)});
+      cameraObstacles.push({...blocker,height:buildingHeight(feature.tags)});
     }
   });
   cameraObstacles.push(...furniture);
@@ -106,9 +107,11 @@ export function buildWorld(scene,world,portals=[],evidence){
     for(const x of [px-1.7,px+1.7])cameraObstacles.push({height:3.3,points:[
       [x-.11,pz-.11],[x+.11,pz-.11],[x+.11,pz+.11],[x-.11,pz+.11],
     ]});
-    cameraVolumes.push({center:[px,3.3,pz],radii:[1.8,.2,.18]});
+    cameraObstacles.push({kind:'portal',id:portal.id,minHeight:3.125,height:3.475,points:[
+      [px-1.8,pz-.125],[px+1.8,pz-.125],[px+1.8,pz+.125],[px-1.8,pz+.125],
+    ]});
   }
-  return {canWalk,cameraObstacles,cameraVolumes,setQuality,setDetailFocus,vegetationMetrics,markerRoot,trees,
+  return {canWalk,cameraObstacles,cameraVolumes,setCameraOccluders:vegetation.setCameraOccluders,setQuality,setDetailFocus,vegetationMetrics,markerRoot,trees,
     landmarks:landmarks.map(({definition:{build,...identity}})=>identity),
     counts:{paths:paths.length,buildings:buildings.length,water:waters.length,trees}};
 }

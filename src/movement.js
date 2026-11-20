@@ -65,17 +65,39 @@ export function buildingHeight(tags = {}) {
   return Math.min(42, height > 0 ? height : Math.max(3, (levels > 0 ? levels : 2) * 3.2));
 }
 
+const cameraBounds=new WeakMap();
+function cameraBoundsOf(obstacle){
+  let bounds=cameraBounds.get(obstacle);
+  if(!bounds){
+    const xs=obstacle.points.map(point=>point[0]),zs=obstacle.points.map(point=>point[1]);
+    bounds=[Math.min(...xs),Math.min(...zs),Math.max(...xs),Math.max(...zs)];
+    cameraBounds.set(obstacle,bounds);
+  }
+  return bounds;
+}
+
 // Sweep a small camera volume from the player toward the smoothed camera.
 // Water is intentionally excluded: only raised buildings obstruct the view.
-export function resolveCamera(anchor, desired, buildings, radius = .22) {
+export function resolveCamera(anchor, desired, buildings, radius = .22, trace) {
+  if (trace) trace.obstacle = null;
   if (![...anchor, ...desired].every(Number.isFinite)) return [...anchor];
   const delta = desired.map((v, i) => v - anchor[i]);
   const steps = Math.max(1, Math.ceil(Math.hypot(...delta) / .1));
+  const candidates=buildings.filter(f=>{
+    const [minX,minZ,maxX,maxZ]=cameraBoundsOf(f);
+    return minX-radius<=Math.max(anchor[0],desired[0])&&maxX+radius>=Math.min(anchor[0],desired[0])&&
+      minZ-radius<=Math.max(anchor[2],desired[2])&&maxZ+radius>=Math.min(anchor[2],desired[2]);
+  });
+  if(!candidates.length&&Math.min(anchor[1],desired[1])>=radius)return desired;
   let safe = [...anchor];
   for (let i = 1; i <= steps; i++) {
     const point = anchor.map((v, axis) => v + delta[axis] * i / steps);
-    if (point[1] < radius || buildings.some(f => point[1] <= f.height + radius &&
-      overlapsPolygon([point[0], point[2]], f.points, radius))) break;
+    const obstacle = candidates.find(f => point[1] <= f.height + radius && point[1] >= (f.minHeight??0)-radius &&
+      overlapsPolygon([point[0], point[2]], f.points, radius));
+    if (point[1] < radius || obstacle) {
+      if (trace) trace.obstacle = obstacle ?? {kind:'ground'};
+      break;
+    }
     safe = point;
   }
   return safe;

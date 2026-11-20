@@ -237,9 +237,10 @@ async function publish(stage,bundle,archive){
 }
 
 async function main(){
-  const {values:{baseline,standalone,'baseline-sha256':expectedSha256,'camera-evaluation':cameraEvaluation}}=parseArgs({
-    options:{baseline:{type:'string'},standalone:{type:'boolean'},'baseline-sha256':{type:'string'},'camera-evaluation':{type:'boolean'}},
+  const {values:{baseline,standalone,'baseline-sha256':expectedSha256,'camera-evaluation':cameraEvaluation,'video-fps':videoFps='24'}}=parseArgs({
+    options:{baseline:{type:'string'},standalone:{type:'boolean'},'baseline-sha256':{type:'string'},'camera-evaluation':{type:'boolean'},'video-fps':{type:'string'}},
   });
+  if(!['12','24'].includes(videoFps))throw new Error('Use --video-fps 12 ou --video-fps 24.');
   if(baseline===''||(expectedSha256!==undefined&&!baseline))throw new Error('Informe o arquivo em --baseline.');
   await mkdir(output,{recursive:true});
   const lock=join(output,'.export-lock');
@@ -276,7 +277,7 @@ async function main(){
       .sort((a,b)=>a.id.localeCompare(b.id));
     const issues=[...profiles.flatMap(result=>result.issues),...gameplay.issues];
     const metrics=profiles.flatMap(result=>result.metrics);
-    const movementTrace=await evaluateMovement(browser,started.target,bundle,cameraEvaluation);
+    const movementTrace=await evaluateMovement(browser,started.target,bundle,cameraEvaluation,Number(videoFps));
     checks.movement={status:movementTrace.status,report:'movement-diagnostics.json'};
     if(movementTrace.status!=='passed')issues.push({type:'movement-diagnostics-failed',
       message:'Consulte movement-diagnostics.json para os cenários que falharam.'});
@@ -297,7 +298,7 @@ async function main(){
       reproducibility:{animationTimeSeconds:0,lighting:'Iluminação fixa da cena, sem relógio de dia.',
         proceduralSeedPolicy:'Sementes fixas definidas no gerador versionado pelo commit Git.'},
       viewport,resolution:viewport,captures,geographicEvidence:geographicFiles,
-      video:cameraEvaluation?{status:movementTrace.status==='passed'?'validated':'failed',files:movementTrace.videos}
+      video:cameraEvaluation?{status:movementTrace.status==='passed'?'validated':'failed',files:movementTrace.videos,encodingFps:Number(videoFps)}
         :{status:'not-generated',reason:'Use --camera-evaluation para gravar os clipes.'}};
     const performance={schemaVersion:2,runtime,environment:'Navegador automatizado. Os resultados não equivalem ao desempenho em dispositivos móveis reais.',
       method:'Intervalo bruto entre requestAnimationFrame. 15 intervalos de aquecimento e 75 amostras por vista estática.',

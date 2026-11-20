@@ -6,7 +6,7 @@ import {regionManifest} from './regions.js';
 import {loadRegion} from './scenes/load-region.js';
 import {createGameState, MEMORY_ID} from './game-state.js';
 import {cameraSettings,qualityProfiles} from './visual-settings.js';
-import {avoidVegetation,recoverCameraArm} from './park-camera.js';
+import {resolveGameplayCamera} from './park-camera.js';
 import {buildWorld} from './world.js';
 import {createCharacter} from './character.js';
 import {finitePoint, resolveCamera, frameTiming, frameMetrics, normalizeMoveInput, projectCameraMovement} from './movement.js';
@@ -80,7 +80,7 @@ const manager=new SceneManager({manifest:regionManifest,loadRegion,buildScene:bu
   },
   onActivate(active){
     world=active.world;stats=active.stats;stats.setQuality(quality);
-    current.yaw=active.yaw;Object.assign(view,current);recentering.reset();cameraArm=1;
+    current.yaw=active.yaw;Object.assign(view,current);recentering.reset();cameraClearance=null;
     note=world.mode==='osm'?'Geometria de OpenStreetMap (© colaboradores OSM)':(world.fallbackReason?'Cenário ilustrativo · '+world.fallbackReason:'Cenário demonstrativo ilustrativo · não representa a geografia real');
     const source=$('data-status');
     source.dataset.origin=world.mode==='osm'?'osm':'demo';
@@ -222,8 +222,35 @@ function requestRecenter(){
     if(!manager.loading&&!modalOpen&&!mapOpen)
     recentering.request(movementInput()[0],avatar.root.rotation.y);
 }
-let cameraArm=1;
-const target=new THREE.Vector3(),orbitDelta=new THREE.Vector3(),desiredCamera=new THREE.Vector3();
+let cameraClearance=null;
+const target=new THREE.Vector3();
+// Start the reproducible obstruction route without changing the saved game or
+// bypassing the scene transition. This hook is stripped from production.
+if(reviewCapture)window.stageCameraObstructionReview=([x,z],yaw)=>{
+  if(manager.loading||manager.active?.id!=='high-park'||world.mode!=='osm'||
+    !stats.canWalk(x,z)||!Number.isFinite(yaw))throw new Error('Invalid High Park review pose.');
+  avatar.root.position.set(x,0,z);
+  avatar.root.rotation.y=current.yaw=yaw;
+  current.pitch=cameraSettings.pitch;current.distance=cameraSettings.distance;
+  Object.assign(view,current);
+  recentering.reset();
+  cameraClearance=null;
+};
+const reviewPoint=new THREE.Vector3();
+const bodySampleHeights=[.15,1.25,2.45];
+function inspectCameraBody(){
+  camera.updateMatrixWorld();
+  const destination=camera.position.toArray();
+  let inFrame=true,lineOfSight=true;
+  for(const height of bodySampleHeights){
+    const point=[target.x,height,target.z];
+    reviewPoint.fromArray(point).project(camera);
+    inFrame&&=Math.abs(reviewPoint.x)<1&&Math.abs(reviewPoint.y)<1&&Math.abs(reviewPoint.z)<1;
+    const clear=resolveCamera(point,destination,stats.cameraObstacles,0);
+    lineOfSight&&=clear.every((value,i)=>Math.abs(value-destination[i])<1e-6);
+  }
+  return {inFrame,lineOfSight};
+}
 const viewDirection=new THREE.Vector3();
 let previous=performance.now();
 function animate(now){
@@ -253,14 +280,8 @@ function animate(now){
   // Translate the whole orbit with the avatar. Smoothing its world position
   // would temporarily rotate the view after sideways motion.
   target.set(avatar.root.position.x,1.48,avatar.root.position.z);
-  const horizontal=view.distance*Math.cos(view.pitch);
-  orbitDelta.set(Math.sin(cameraYaw)*horizontal,view.distance*Math.sin(view.pitch),Math.cos(cameraYaw)*horizontal);
-  const anchor=target.toArray();
-  const clearOrbit=resolveCamera(anchor,desiredCamera.copy(target).add(orbitDelta).toArray(),stats.cameraObstacles);
-  const safeCamera=avoidVegetation(anchor,clearOrbit,stats.cameraVolumes);
-  const safeDistance=Math.hypot(safeCamera[0]-anchor[0],safeCamera[1]-anchor[1],safeCamera[2]-anchor[2]);
-  cameraArm=recoverCameraArm(cameraArm,Math.min(1,safeDistance/view.distance),dt,cameraSettings.clearanceRecovery);
-  camera.position.copy(target).addScaledVector(orbitDelta,cameraArm);
+  cameraClearance=resolveGameplayCamera(target.toArray(),view,stats,cameraClearance,dt,cameraSettings);
+  camera.position.fromArray(cameraClearance.position);
   camera.lookAt(target);
 
   let diagnostics;
@@ -270,13 +291,16 @@ function animate(now){
     const renderedYaw=Math.atan2(-viewDirection.x,-viewDirection.z);
     const projected=projectCameraMovement(displacement,renderedYaw).map(value=>dt?value/dt:0);
     diagnostics={input:normalizeMoveInput(right,forward),cameraYaw:renderedYaw,characterHeading:avatar.root.rotation.y,
-      projected,commandSpeed:player.configuredSpeed(running),angularFollow:false,recentering:recentering.target!==null,cameraFollowMode:recentering.mode};
+      projected,obstruction:cameraClearance.diagnostics,commandSpeed:player.configuredSpeed(running),angularFollow:false,recentering:recentering.target!==null,cameraFollowMode:recentering.mode};
+    if(reviewCapture)diagnostics.obstruction.body=inspectCameraBody();
     if(debugPanel){
       const format=vector=>vector.map(value=>value.toFixed(2)).join(' / ');
       debugPanel.textContent=`${document.documentElement.dataset.movementStage??flags.get('movement-scenario')??'Diagnóstico de movimento'}
 Entrada X/Y  ${format(diagnostics.input)}
 Yaw câmera   ${cameraYaw.toFixed(2)} rad
 Corpo        ${diagnostics.characterHeading.toFixed(2)} rad
+Dist. câmera ${cameraClearance.distance.toFixed(2)} m
+Obstrução    ${cameraClearance.diagnostics.state}
 Direita/frente ${format(projected)} m/s
 Modo: ${recentering.mode} · Recentralização: ${diagnostics.recentering?'ativa':'inativa'}`;
     }
