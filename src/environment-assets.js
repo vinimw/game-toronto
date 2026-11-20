@@ -41,6 +41,8 @@ const assets=new AssetManager({
   },
 });
 
+export const acquireEntranceGate=()=>assets.acquire('north-gate.glb');
+
 export const entranceAssetStats=()=>assets.stats();
 
 export async function loadEntranceAssets(signal){

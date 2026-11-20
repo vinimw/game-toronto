@@ -93,3 +93,36 @@ antes da primeira cena. A comparação histórica por ZIP é independente.
 O percurso acelerado passa por três setores de detalhe, testa ida e retorno,
 e registra frames acima de 50 ms, estado dos setores, memória estimada,
 tempos de ativação e downloads. Mobile é Chromium emulado.
+
+## Continuidade e diagnóstico v1.1
+
+O contexto estrutural do setor de chegada `high-park:4:0` faz parte da
+base. A entrada retém um lease apenas do GLB Blender do portão quando
+descarta o pacote detalhado. Assim, a silhueta arquitetônica, os pilares
+e as grades permanecem com o material original do GLB até os materiais
+PBR e a vegetação detalhada voltarem. As texturas são inicializadas em
+pares por frame. O shader, os buffers e as instâncias ainda podem ter
+custo no primeiro desenho.
+
+O agendamento considera a direção de visão, distância e a duração
+observada da última ativação. O diagnóstico separa chegada inicial de
+entrada tardia em um setor. `visiblePopInCount` conta ativações dentro
+de 95 m e do cone horizontal da câmera. É uma estimativa sem teste de
+oclusão. `firstLandmarkVisibleMs` usa a interseção da estrutura com o
+frustum. `firstLandmarkDetailedMs` mede o primeiro frame submetido com
+o conjunto detalhado. Os frames acima de 50 ms levam os eventos recentes
+do setor e o tempo de renderização na CPU. Proximidade temporal não
+identifica por si só o custo de compilação do shader ou o tempo da GPU.
+
+Para verificar a hospedagem estática em produção, rode:
+
+```sh
+npm run build
+node tools/review/production-base.mjs /
+PAGES_BASE_PATH=/game-love/ npm run build
+node tools/review/production-base.mjs /game-love/
+```
+
+O teste serve apenas `dist` e percorre o jogo com mouse/teclado e touch
+emulado. O Review Export registra os vídeos e a linha do tempo de ida
+e volta no diagnóstico de streaming.
