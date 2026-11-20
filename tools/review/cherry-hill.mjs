@@ -5,7 +5,15 @@ import {frameStatistics} from './motion-benchmark.js';
 import {startViewportVideo} from './full-viewport-video.mjs';
 
 const waitLod=(page,lod)=>page.waitForFunction(lod=>window.inspectWorldStreaming().cherryHill.lod===lod,lod,{timeout:12000});
+const percentile99=values=>[...values].sort((a,b)=>a-b)[Math.ceil(values.length*.99)-1]??null;
 const stats=page=>page.evaluate(()=>window.inspectWorldStreaming());
+// GLBs are shared with the west grove. Verify local sector release even if
+// another grove still holds a lease on the same decoded model.
+function assertHillReleased(snapshot){
+  const sectors=snapshot.sectors.filter(sector=>sector.id.startsWith('high-park:cherry-hill:'));
+  assert.ok(sectors.length>0);
+  assert.ok(sectors.every(sector=>['idle','base'].includes(sector.state)&&sector.estimatedGeometryBytes===0));
+}
 
 async function verifyMobile(browser,target){
   const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,reducedMotion:'reduce'});
@@ -26,12 +34,12 @@ async function verifyMobile(browser,target){
     assert.ok(end[2]-start[2]>2);
     await page.evaluate(()=>window.stageCameraReview([-22,-105],Math.PI));
     await waitLod(page,null);
-    assert.equal((await stats(page)).cherryHill.assets.decodedActive,0);
+    assertHillReleased(await stats(page));
     return {arrived,start,end};
   }finally{await context.close();}
 }
 
-export async function evaluateCherryHill(browser,target,bundle,safeMessage){
+export async function evaluateCherryHill(browser,target,bundle,safeMessage,{pond=false,maple=false}={}){
   const viewport={width:1280,height:720};
   const context=await browser.newContext({viewport,reducedMotion:'reduce'});
   let recording;
@@ -47,10 +55,11 @@ export async function evaluateCherryHill(browser,target,bundle,safeMessage){
     const north=await stats(page);
     assert.equal(north.cherryHill.assets,null);
     assert.ok(north.cherryHill.futureMemoryPosition);
-    await stage([-198,561],Math.PI);
+    const startPose=maple?[-125,795]:[-198,561];
+    await stage(startPose,Math.PI);
     const position=()=>page.locator('#game canvas').evaluate(canvas=>JSON.parse(canvas.dataset.reviewPose).position.local);
-    await page.waitForFunction(()=>JSON.parse(document.querySelector('#game canvas').dataset.reviewPose).position.local[2]===561);
-    assert.equal((await stats(page)).cherryHill.lod,null);
+    await page.waitForFunction(z=>JSON.parse(document.querySelector('#game canvas').dataset.reviewPose).position.local[2]===z,startPose[1]);
+    if(!maple)assert.equal((await stats(page)).cherryHill.lod,null);
     await page.evaluate(()=>{
       const overlay=document.createElement('div');
       overlay.id='cherry-streaming-overlay';
@@ -58,6 +67,7 @@ export async function evaluateCherryHill(browser,target,bundle,safeMessage){
       document.body.append(overlay);
       window.cherryVideoStart=performance.now();
     });
+    if(maple)await page.locator('#speed-panel [data-toggle][aria-expanded="true"]').click();
     recording=await startViewportVideo(page,viewport,12,{touchControls:false});
     const legs=[];
     async function walk(label,yaw,destination,multiplier){
@@ -76,7 +86,7 @@ export async function evaluateCherryHill(browser,target,bundle,safeMessage){
           const known=new Map();
           function tick(now){
             intervals.push(now-previous);previous=now;
-            const {cherryHill,renderer,sectors}=window.inspectWorldStreaming();
+            const {cherryHill,grenadierPond,mapleGarden,renderer,sectors}=window.inspectWorldStreaming();
             const position=JSON.parse(canvas.dataset.reviewPose).position.local;
             const coverage=cherryHill.detailCoverage+(1-cherryHill.detailCoverage)*cherryHill.lowCoverage;
             const ms=now-window.cherryVideoStart;
@@ -89,17 +99,74 @@ export async function evaluateCherryHill(browser,target,bundle,safeMessage){
               }
             }
             if(now-last>150){
-              samples.push({ms,position,lod:cherryHill.lod,coverage,renderer});
-              overlay.textContent=`${(ms/1000).toFixed(1)} s · ${label} · ${cherryHill.lod??'base'} · cobertura ${Math.round(coverage*100)}%`;
+              samples.push({ms,position,lod:cherryHill.lod,coverage,grenadierPond,mapleGarden,renderer});
+              overlay.textContent=`${(ms/1000).toFixed(1)} s · ${label} · ${cherryHill.lod??'base'} · cobertura ${Math.round(coverage*100)}% · Lago ${grenadierPond.state??'base'} · Jardim ${mapleGarden.state??'base'} (${mapleGarden.instances})`;
               last=now;
             }
-            if((yaw===0?position[2]<=destination:position[2]>=destination)||now-start>=28000)
+            if((Math.cos(yaw)>0?position[2]<=destination:position[2]>=destination)||now-start>=28000)
               resolve({label,intervals:intervals.slice(1),samples,events,jumps,end:position});
             else requestAnimationFrame(tick);
           }
           requestAnimationFrame(tick);
         }),{label,destination,yaw});
       }finally{await page.keyboard.up('w');}
+    }
+    if(maple){
+      const ends=[1009,1030,813,1020];
+      legs.push(await walk('Chegada ao jardim',Math.PI,ends[0],5));
+      legs.push(await walk('Exploração do canteiro',Math.PI,ends[1],1));
+      const [x,,z]=await position();
+      await stage([x,z],Math.PI/2);
+      await page.waitForTimeout(2300);
+      legs.push(await walk('Afastamento',0,ends[2],5));
+      legs.push(await walk('Retorno ao jardim',Math.PI,ends[3],5));
+      const samples=legs.flatMap(leg=>leg.samples);
+      const timeline=[];
+      for(const sample of samples){
+        if(timeline.at(-1)?.state!==sample.mapleGarden.state)
+          timeline.push({ms:sample.ms,position:sample.position,...sample.mapleGarden});
+      }
+      const states=timeline.filter(event=>event.state!=='loading').map(event=>event.state);
+      const complete=legs.every((leg,i)=>Math.abs(leg.end[2]-ends[i])<3);
+      const video='maple-garden-walk.webm';
+      const playback=await recording.stop(join(bundle,video));
+      const passed=complete&&states.join(',').includes('active,idle,active')&&errors.length===0;
+      return {status:passed?'passed':'failed',complete,video,playback,timeline,errors,
+        p99Ms:percentile99(legs.flatMap(leg=>leg.intervals)),
+        route:legs.map(({intervals,...leg})=>({...leg,...frameStatistics(intervals)}))};
+    }
+    if(pond){
+      const shoreYaw=2.3;
+      legs.push(await walk('Aproximação por Cherry Hill',Math.PI,780,5));
+      legs.push(await walk('Descida para a margem',shoreYaw,825,3));
+      legs.push(await walk('Junto à água',shoreYaw,840,1));
+      const [shoreX,,shoreZ]=await position();
+      await stage([shoreX,shoreZ],Math.PI/2);
+      await page.evaluate(()=>{
+        document.querySelector('#cherry-streaming-overlay').textContent='Margem leste · pausa para observar o lago';
+      });
+      await page.waitForTimeout(3400);
+      legs.push(await walk('Subida de volta à trilha',shoreYaw-Math.PI,780,3));
+      legs.push(await walk('Afastamento',0,498,5));
+      legs.push(await walk('Retorno à margem',Math.PI,780,5));
+      legs.push(await walk('Margem reativada',shoreYaw,840,3));
+      const video='grenadier-pond-walk.webm';
+      const playback=await recording.stop(join(bundle,video));
+      const samples=legs.flatMap(leg=>leg.samples);
+      const timeline=[];
+      for(const sample of samples){
+        const {state,coverage}=sample.grenadierPond;
+        if(timeline.at(-1)?.state!==state)timeline.push({ms:sample.ms,position:sample.position,...sample.grenadierPond});
+      }
+      const first=timeline.findIndex(event=>event.state==='active');
+      const released=timeline.findIndex((event,index)=>index>first&&event.state==='idle');
+      const returned=timeline.findIndex((event,index)=>index>released&&event.state==='active');
+      const complete=legs.every((leg,i)=>Math.abs(leg.end[2]-[780,825,840,780,498,780,840][i])<3);
+      const passed=complete&&first>=0&&released>first&&returned>released&&errors.length===0;
+      return {status:passed?'passed':'failed',video,playback,complete,timeline,errors,
+        coverageDefinition:'Fração alvo dos pixels da margem liberada pela máscara opaca por quadro. 1 libera todos os pixels elegíveis; não mede área de margem visível.',
+        p99Ms:percentile99(legs.flatMap(leg=>leg.intervals)),
+        route:legs.map(({intervals,...leg})=>({...leg,...frameStatistics(intervals)}))};
     }
     legs.push(await walk('Aproximação',Math.PI,733,3));
     legs.push(await walk('Sob as copas',Math.PI,784,1));
@@ -114,7 +181,7 @@ export async function evaluateCherryHill(browser,target,bundle,safeMessage){
     assert.ok(legs[3].samples.some(sample=>sample.lod==='high'&&sample.coverage>.99),'Detalhe não recuperado no retorno.');
     assert.deepEqual(legs.flatMap(leg=>leg.jumps),[],'Uma camada de árvores surgiu ou desapareceu abruptamente.');
     assert.ok(arrived.cherryHill.trees>=10);
-    assert.equal(unloaded.cherryHill.assets.decodedActive,0);
+    assertHillReleased(unloaded);
     assert.equal(returned.cherryHill.assets.downloads,arrived.cherryHill.assets.downloads);
     assert.deepEqual(errors,[]);
     const video='cherry-hill-approach.webm';
