@@ -55,11 +55,15 @@ function locate(point,active){
 function frameCamera(point,world,[x,z]){
   const aspect=innerWidth/innerHeight;
   if(point.projection==='orthographic'){
-    const [west,north,east,south]=world.bbox;
+    const ring=point.pond?world.features.find(f=>f.osmId===174225267)?.points:null;
+    const [west,north,east,south]=ring?[
+      Math.min(...ring.map(p=>p[0])),Math.min(...ring.map(p=>p[1])),
+      Math.max(...ring.map(p=>p[0])),Math.max(...ring.map(p=>p[1])),
+    ]:world.bbox;
     const halfHeight=Math.max(south-north,(east-west)/aspect)*.54;
-    const view=new THREE.OrthographicCamera(-halfHeight*aspect,halfHeight*aspect,halfHeight,-halfHeight,.1,300);
+    const view=new THREE.OrthographicCamera(-halfHeight*aspect,halfHeight*aspect,halfHeight,-halfHeight,.1,point.pond?1500:300);
     const centerX=(west+east)/2,centerZ=(north+south)/2;
-    view.position.set(centerX,115,centerZ);
+    view.position.set(centerX,point.pond?520:115,centerZ);
     view.up.set(0,0,-1);
     view.lookAt(centerX,0,centerZ);
     return view;

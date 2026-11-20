@@ -38,7 +38,7 @@ async function verifyMobile(browser,target){
   }finally{await context.close();}
 }
 
-export async function evaluateCherryHill(browser,target,bundle,safeMessage){
+export async function evaluateCherryHill(browser,target,bundle,safeMessage,{pond=false}={}){
   const viewport={width:1280,height:720};
   const context=await browser.newContext({viewport,reducedMotion:'reduce'});
   let recording;
@@ -83,7 +83,7 @@ export async function evaluateCherryHill(browser,target,bundle,safeMessage){
           const known=new Map();
           function tick(now){
             intervals.push(now-previous);previous=now;
-            const {cherryHill,renderer,sectors}=window.inspectWorldStreaming();
+            const {cherryHill,grenadierPond,renderer,sectors}=window.inspectWorldStreaming();
             const position=JSON.parse(canvas.dataset.reviewPose).position.local;
             const coverage=cherryHill.detailCoverage+(1-cherryHill.detailCoverage)*cherryHill.lowCoverage;
             const ms=now-window.cherryVideoStart;
@@ -96,8 +96,8 @@ export async function evaluateCherryHill(browser,target,bundle,safeMessage){
               }
             }
             if(now-last>150){
-              samples.push({ms,position,lod:cherryHill.lod,coverage,renderer});
-              overlay.textContent=`${(ms/1000).toFixed(1)} s · ${label} · ${cherryHill.lod??'base'} · cobertura ${Math.round(coverage*100)}%`;
+              samples.push({ms,position,lod:cherryHill.lod,coverage,grenadierPond,renderer});
+              overlay.textContent=`${(ms/1000).toFixed(1)} s · ${label} · ${cherryHill.lod??'base'} · cobertura ${Math.round(coverage*100)}% · Lago ${grenadierPond.state??'base'} (${grenadierPond.shoreInstances})`;
               last=now;
             }
             if((yaw===0?position[2]<=destination:position[2]>=destination)||now-start>=28000)
@@ -107,6 +107,27 @@ export async function evaluateCherryHill(browser,target,bundle,safeMessage){
           requestAnimationFrame(tick);
         }),{label,destination,yaw});
       }finally{await page.keyboard.up('w');}
+    }
+    if(pond){
+      legs.push(await walk('Aproximação por Cherry Hill',Math.PI,780,5));
+      legs.push(await walk('Vista da margem',Math.PI,840,5));
+      legs.push(await walk('Afastamento',0,508,5));
+      legs.push(await walk('Retorno à margem',Math.PI,815,5));
+      const video='grenadier-pond-walk.webm';
+      const playback=await recording.stop(join(bundle,video));
+      const samples=legs.flatMap(leg=>leg.samples);
+      const timeline=[];
+      for(const sample of samples){
+        const {state,coverage}=sample.grenadierPond;
+        if(timeline.at(-1)?.state!==state)timeline.push({ms:sample.ms,state,coverage});
+      }
+      const first=timeline.findIndex(event=>event.state==='active');
+      const released=timeline.findIndex((event,index)=>index>first&&event.state==='idle');
+      const returned=timeline.findIndex((event,index)=>index>released&&event.state==='active');
+      const complete=legs.every((leg,i)=>Math.abs(leg.end[2]-[780,840,508,815][i])<3);
+      const passed=complete&&first>=0&&released>first&&returned>released&&errors.length===0;
+      return {status:passed?'passed':'failed',video,playback,complete,timeline,errors,
+        route:legs.map(({intervals,...leg})=>({...leg,...frameStatistics(intervals)}))};
     }
     legs.push(await walk('Aproximação',Math.PI,733,3));
     legs.push(await walk('Sob as copas',Math.PI,784,1));

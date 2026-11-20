@@ -300,7 +300,9 @@ export function highParkStreaming(scene,world,sun,style,paths,activateEntrance,b
       const sectors=stream.stats();
       return {cherryHill:{futureMemoryPosition:memoryAnchor,lod:cherryLod(),detailCoverage:blend,lowCoverage,trees:trees?.length??0,assets:cherryStats(),
         estimatedTextureBytes:cherryLod()?estimatedTextures(cherryLayers.get(cherryLod()).root,{shadow:{}}):0},
-        grenadierPond:{shoreInstances:shore?.count??0,coverage:shore?.coverage.value??0},
+        grenadierPond:{...sectors.find(sector=>sector.id===pondDetailId),
+          shoreInstances:shore?.count??0,lod:shore?.quality??null,coverage:shore?.coverage.value??0,
+          cache:'procedural; no external assets'},
         firstSakura:{id:seasonalGrove?.id??null,lod:seasonalLayers.has(quality)?quality:seasonalLayers.has('low')?'low':null,
           detailCoverage:seasonalBlend,lowCoverage:seasonalLowCoverage,trees:getSeasonalTreePlacements().length},
         landmarkState:entranceArt?'detailed':fallback?'structure':'pending',sectors,assets:assetStats(),

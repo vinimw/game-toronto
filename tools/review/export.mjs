@@ -168,7 +168,22 @@ async function collectProfile(browser,target,dir,profileId,expanded=false,legacy
           continue;
         }
         const file='screenshots/'+result.fileStem+'.png';
-        await page.screenshot({path:join(dir,file),animations:'disabled',timeout:10000});
+        const screenshot=await page.screenshot({path:join(dir,file),animations:'disabled',timeout:10000});
+        if(point.id==='71-grenadier-pond'){
+          const dominant=await page.evaluate(async png=>{
+            const image=new Image();image.src='data:image/png;base64,'+png;await image.decode();
+            const canvas=document.createElement('canvas');canvas.width=96;canvas.height=54;
+            const ctx=canvas.getContext('2d');ctx.drawImage(image,0,0,96,54);
+            const {data}=ctx.getImageData(0,0,96,54),histogram=new Map();
+            for(let i=0;i<data.length;i+=4){
+              const key=(data[i]>>5)*64+(data[i+1]>>5)*8+(data[i+2]>>5);
+              histogram.set(key,(histogram.get(key)??0)+1);
+            }
+            return Math.max(...histogram.values())/(data.length/4);
+          },screenshot.toString('base64'));
+          if(dominant>.82)throw new Error('Vista aérea quase uniforme: '+dominant.toFixed(3));
+          result.dominantColorFraction=dominant;
+        }
         captures.push({...base,...result,file});
         try{
           const values=await evaluate('measure',point.id);
@@ -338,6 +353,9 @@ async function main(){
     const cherry=await evaluateCherryHill(browser,started.target,bundle,safeMessage);
     checks.cherryHill={status:cherry.status,report:'cherry-hill.json'};
     if(cherry.status!=='passed')issues.push({type:'cherry-hill-failed',message:cherry.error});
+    const pond=await evaluateCherryHill(browser,started.target,bundle,safeMessage,{pond:true});
+    checks.grenadierPond={status:pond.status,report:'grenadier-pond.json'};
+    if(pond.status!=='passed')issues.push({type:'grenadier-pond-failed',message:pond.error??'Percurso ou ciclo de streaming incompleto.'});
     const movementTrace=await evaluateMovement(browser,started.target,bundle,cameraEvaluation,Number(videoFps));
     checks.movement={status:movementTrace.status,report:'movement-diagnostics.json'};
     if(movementTrace.status!=='passed')issues.push({type:'movement-diagnostics-failed',
@@ -384,6 +402,7 @@ async function main(){
     await json('high-park-terrain-review.json',terrainReport);
     await json('world-streaming.json',streaming);
     await json('cherry-hill.json',cherry);
+    await json('grenadier-pond.json',pond);
     await json('memory-gameplay.json',memoryGameplay);
     await json('movement-diagnostics.json',movementTrace);
     await json('automatic-camera-diagnostics.json',automaticCamera);
@@ -401,7 +420,7 @@ async function main(){
 
     // Explicit allowlist. Nothing outside this staging directory can enter the archive.
     const files=['metadata.json','performance.json','console-errors.json','geographic-correspondence.json',
-      'report.html','cherry-hill.json',...(cherry.video?[cherry.video]:[]),'world-streaming.json',...streaming.videos,...entranceFiles,'high-park-terrain-review.json',...terrainFiles,'memory-gameplay.json',...movementFiles,...standaloneFiles,...geographicFiles,...captures.flatMap(capture=>capture.file?[capture.file]:[]),...comparisonFiles];
+      'report.html','grenadier-pond.json',...(pond.video?[pond.video]:[]),'cherry-hill.json',...(cherry.video?[cherry.video]:[]),'world-streaming.json',...streaming.videos,...entranceFiles,'high-park-terrain-review.json',...terrainFiles,'memory-gameplay.json',...movementFiles,...standaloneFiles,...geographicFiles,...captures.flatMap(capture=>capture.file?[capture.file]:[]),...comparisonFiles];
     if((await run('zip',['-q','-X',archive,...files],{cwd:bundle})).code!==0)
       throw new Error('Falha ao criar o ZIP.');
     if((await run('unzip',['-tq',archive],{quiet:true})).code!==0)

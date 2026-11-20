@@ -105,13 +105,13 @@ points.push(
 for(const [id,label,local,eye,look,profile] of [
   ['64','perspectiva pedestre',[-205,828],[-48,4,4],[-110,0,50]],
   ['65','panorama',[-205,828],[-38,16,4],[-150,-9,60]],
-  ['66','margem naturalizada',[-205,828],[-77,-6,25],[-114,-8,44]],
-  ['67','ondulação e reflexos',[-205,828],[-95,-9,51],[-144,-9,72]],
+  ['66','margem naturalizada',[-205,828],[-71,2.8,40],[-88,-.5,50]],
+  ['67','ondulação e reflexos',[-205,828],[-73,4.8,48],[-109,-.3,64]],
   ['68','transição da trilha à margem',[-205,828],[-5,4,-6],[-111,-8,36]],
   ['69','encosta',[-201,774],[30,22,-14],[-122,-9,75]],
   ['70','vista pelas cerejeiras',[-201,796],[16,3,-5],[-116,-8,57]],
   ['71','vista aérea',[-205,828],[-178,332,-160],[-190,-10,150]],
   ['72','Balanced mobile',[-205,828],[-58,7,14],[-130,-8,48],'mobile'],
 ]){
-  points.push({...cherryView(id+'-grenadier-pond','Grenadier Pond · '+label,local,eye,look,profile),pond:true});
+  points.push({...cherryView(id+'-grenadier-pond','Grenadier Pond · '+label,local,eye,look,profile),pond:true,...(id==='71'?{projection:'orthographic'}:{})});
 }
