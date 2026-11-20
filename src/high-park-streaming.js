@@ -114,16 +114,31 @@ export function highParkStreaming(scene,world,sun,style,paths,activateEntrance,b
     createWalkTest(world.features,world.bbox),[cherryHill.memory])[0]?.position:null;
   let cherryStats=()=>null,trees,quality='high';
   const cherryLod=()=>cherryLayers.has(quality)?quality:cherryLayers.has('low')?'low':null;
+  let blend=0,lowCoverage=0,lastBlendTime;
+  const updateCherryCoverage=(position,now)=>{
+    const dt=lastBlendTime===undefined?0:Math.min(100,now-lastBlendTime);
+    lastBlendTime=now;
+    const [x,z]=position,[west,north,east,south]=cherryHill.bounds;
+    const distance=Math.hypot(Math.max(west-x,0,x-east),Math.max(north-z,0,z-south));
+    const target=Number(cherryLayers.has(quality)&&quality!=='low'&&distance<107);
+    blend=THREE.MathUtils.clamp(blend+Math.sign(target-blend)*Math.min(Math.abs(target-blend),dt/460),0,1);
+    const lowTarget=Number(cherryLayers.has('low')&&distance<160);
+    lowCoverage+=Math.sign(lowTarget-lowCoverage)*Math.min(Math.abs(lowTarget-lowCoverage),dt/430);
+    showCherryLod();
+  };
   const showCherryLod=()=>{
-    const selected=cherryLod();
-    for(const [lod,art] of cherryLayers)art.root.visible=lod===selected;
+    for(const [lod,art] of cherryLayers){
+      const weight=lod==='low'?(1-blend)*lowCoverage:lod===quality?blend:0;
+      art.root.visible=weight>0;
+      art.setCoverage(weight);
+    }
   };
   if(cherryEnabled)for(const lod of cherryHill.lods){
     const dependencies=cherryHill.models.map(model=>model+'-'+lod+'.glb');
     manifests.push({
       id:cherryHill.id+':'+lod,bounds:cherryHill.bounds,
-      loadRadius:lod==='low'?108:63,keepRadius:lod==='low'?190:125,
-      lane:lod==='low'?'cherry-low':'cherry-detail',bias:-90,lods:[lod],
+      loadRadius:lod==='low'?128:78,keepRadius:lod==='low'?205:145,
+      lane:lod==='low'?'cherry-low':'cherry-detail',bias:-90,lods:[lod],continuousPresentation:true,
       assets:{directory:assetUrl('assets/north-entrance/'),shared:dependencies},
       hasDetail:()=>lod==='low'||lod===quality,
       async load(signal,frame){
@@ -163,7 +178,11 @@ export function highParkStreaming(scene,world,sun,style,paths,activateEntrance,b
       manifests.find(item=>item.id===sector.id).assets.featureCount++;
       return true;
     },
-    update:(position,velocity,look,view)=>{renderer=view.renderer;stream.update(position,velocity,look,view);},
+    update:(position,velocity,look,view)=>{
+      renderer=view.renderer;
+      stream.update(position,velocity,look,view);
+      if(cherryEnabled)updateCherryCoverage(position,performance.now());
+    },
     landmarkBounds:()=>gateBounds,
     landmarkState:()=>entranceArt?'detailed':fallback?'structure':'pending',
     setQuality(next){
@@ -173,11 +192,14 @@ export function highParkStreaming(scene,world,sun,style,paths,activateEntrance,b
         if(sector.id.startsWith(cherryHill.id+':')&&!sector.hasDetail())stream.evict(sector);
       showCherryLod();
     },
-    prime:({cherry=false}={})=>stream.prime(sector=>cherry===sector.id.startsWith(cherryHill.id+':')),
+    async prime({cherry=false}={}){
+      await stream.prime(sector=>cherry===sector.id.startsWith(cherryHill.id+':'));
+      if(cherry){blend=Number(quality!=='low');lowCoverage=1;showCherryLod();}
+    },
     dispose(){disposed=true;stream.dispose();fallback?.removeFromParent();gateLease?.release();},
     stats:()=>{
       const sectors=stream.stats();
-      return {cherryHill:{futureMemoryPosition:memoryAnchor,lod:cherryLod(),trees:trees?.length??0,assets:cherryStats(),
+      return {cherryHill:{futureMemoryPosition:memoryAnchor,lod:cherryLod(),detailCoverage:blend,lowCoverage,trees:trees?.length??0,assets:cherryStats(),
         estimatedTextureBytes:cherryLod()?estimatedTextures(cherryLayers.get(cherryLod()).root,{shadow:{}}):0},
         landmarkState:entranceArt?'detailed':fallback?'structure':'pending',sectors,assets:assetStats(),
         firstPresentationCount:sectors.reduce((total,s)=>total+s.firstPresentationCount,0),

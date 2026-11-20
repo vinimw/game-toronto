@@ -15,7 +15,9 @@ def render(kind, output):
     random.seed(kind)
     image = Image.new("RGBA", (LENGTH,LENGTH), (87,118,48,0))
     draw = ImageDraw.Draw(image)
-    for i in range(92 if kind!="sakura" else 135):
+    clusters=[(256+math.cos(i*2.399)*r,256+math.sin(i*2.399)*r*.88)
+              for i in range(27) for r in [38+175*math.sqrt(i/27)]]
+    for i in range(92 if kind!="sakura" else 216):
         a=random.uniform(0,math.tau)
         radius=math.sqrt(random.random())
         x=256+math.cos(a)*radius*218
@@ -27,8 +29,11 @@ def render(kind, output):
             u,v=p
             return x+size*(u*c-v*s),y+size*(u*s+v*c)
         if kind=="sakura":
-            size*=.34
-            shade=(random.randrange(226,255),random.randrange(178,233),random.randrange(196,239),255)
+            bx,by=clusters[i//8]
+            x=bx+math.cos(a)*radius*34;y=by+math.sin(a)*radius*28
+            size*=.32
+            tint=random.randrange(5,33)
+            shade=(255-tint//5,254-tint,250-tint//2,255)
             for j in range(5):
                 a=j*math.tau/5+direction
                 px,py=x+size*.62*math.cos(a),y+size*.62*math.sin(a)

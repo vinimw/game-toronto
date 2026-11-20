@@ -8,6 +8,7 @@ from mathutils import Vector
 
 args = sys.argv[sys.argv.index("--")+1:]
 OUT, CARDS = map(Path, args[:2])
+SAKURA_ONLY = args[2:] == ["--sakura-all"]
 LOW_SAKURA = args[2:] == ["--sakura-low"]
 OUT.mkdir(parents=True, exist_ok=True)
 
@@ -50,7 +51,7 @@ def export(filename,objects):
     bpy.ops.object.delete()
 
 bpy.ops.object.select_all(action="SELECT");bpy.ops.object.delete()
-if not LOW_SAKURA:
+if not (LOW_SAKURA or SAKURA_ONLY):
     stone=material("Masonry_PBR",(.43,.39,.33))
     cap=material("Dressed limestone",(.50,.48,.41))
     iron=material("Weathered wrought iron",(.032,.042,.035),.63,.42)
@@ -129,6 +130,7 @@ def tree(species,seed,lod):
     height=(13.8 if species=="maple" else 11.7 if species=="oak" else 6.1)*rng.uniform(.94,1.09)
     spread=(5.0 if species=="maple" else 6.6 if species=="oak" else 3.5)*rng.uniform(.91,1.11)
     sides={"high":8,"balanced":6,"low":5}[lod]
+    wood_rng=random.Random(seed+1403)
     def branch(points,widths):
         offset=len(bv)
         for j,(p,r) in enumerate(zip(points,widths)):
@@ -136,37 +138,40 @@ def tree(species,seed,lod):
             a=axis.cross(Vector((1,0,0))).normalized();b=axis.cross(a).normalized()
             for i in range(sides):
                 angle=i*math.tau/sides
-                bv.append(p+r*(a*math.cos(angle)+b*math.sin(angle))*(.93+.13*rng.random()))
+                bv.append(p+r*(a*math.cos(angle)+b*math.sin(angle))*(.93+.13*wood_rng.random()))
         for j in range(len(points)-1):
             for i in range(sides):
                 a=offset+j*sides+i;b=offset+j*sides+(i+1)%sides
                 bf.append((a,b,b+sides,a+sides))
-    def card(center,scale):
+    def card(center,scale,include=True):
         yaw=rng.random()*math.tau
         u=Vector((math.cos(yaw),math.sin(yaw),rng.uniform(-.35,.35))).normalized()*scale
         v=Vector((-math.sin(yaw)*.44,math.cos(yaw)*.44,rng.choice([-1,1])*.81)).normalized()*scale*.74
+        if not include:return
         i=len(lv);lv.extend([center-u-v,center+u-v,center+u+v,center-u+v]);lf.append((i,i+1,i+2,i+3))
     trunk=[Vector((rng.uniform(-.24,.24)*i,rng.uniform(-.2,.2)*i,height*f)) for i,f in enumerate([0,.19,.37,.58,.78,.98])]
     branch(trunk,[height*x for x in [.048,.037,.030,.021,.012,.002]])
-    for i in range({"high":10,"balanced":8,"low":7}[lod]):
-        angle=i*2.399+rng.uniform(-.35,.35)
+    for i in range(10):
+        angle=i*2.399+rng.uniform(-.59,.59)
         y=height*(.34+.043*i)
         f=min(4,int((y/height)/.19))
         start=Vector((trunk[f].x,trunk[f].y,y))
-        rad=spread*(1-.037*i)*rng.uniform(.79,1.12)
+        rad=spread*(1-.037*i)*rng.uniform(.65,1.27)
         axis=Vector((math.cos(angle),math.sin(angle),0))
         middle=start+axis*rad*.53+Vector((0,0,height*.095))
         tip=start+axis*rad+Vector((0,0,height*rng.uniform(.14,.24)))
         branch([start,middle,tip],[height*.019,height*.008,height*.0018])
-        for j in range({"high":4,"balanced":3,"low":2}[lod]):
+        for j in range(4):
             part=middle.lerp(tip,(j+1)/4.5)
             twig=part+Vector((rng.uniform(-1,1),rng.uniform(-1,1),rng.uniform(.7,1.6)))*spread*.31
-            branch([part,part.lerp(twig,.52),twig],[height*.007,height*.003,height*.001])
-            for _ in range({"high":8,"balanced":4,"low":2}[lod]):
+            if lod=="high" or j%2==0:
+                branch([part,part.lerp(twig,.52),twig],[height*.007,height*.003,height*.001])
+            for k in range(8):
                 c=twig+Vector((rng.uniform(-1,1),rng.uniform(-1,1),rng.uniform(-.65,.86)))*spread*.24
-                card(c,spread*rng.uniform(.19,.37)*(1.32 if lod=="low" else 1))
-    for _ in range(20 if lod=="high" else 10):
-        card(trunk[-1]+Vector((rng.uniform(-1,1),rng.uniform(-1,1),rng.uniform(-.55,.45)))*spread*.42,spread*.29)
+                card(c,spread*rng.uniform(.17,.31)*(1.25 if lod=="low" else 1),
+                     k % {"high":1,"balanced":2,"low":4}[lod] == 0)
+    for k in range(20):
+        card(trunk[-1]+Vector((rng.uniform(-1,1),rng.uniform(-1,1),rng.uniform(-.55,.45)))*spread*.42,spread*.27,k%({"high":1,"balanced":2,"low":4}[lod])==0)
     result=[]
     for name,vertices,faces,mat in [("Wood",bv,bf,bark),("LeafCards",lv,lf,canopy)]:
         mesh=bpy.data.meshes.new(name);mesh.from_pydata(vertices,[],faces);mesh.update()
@@ -179,8 +184,8 @@ def tree(species,seed,lod):
         result.append(obj)
     export(f"{species}-{seed}-{lod}.glb",result)
 
-species_seeds = [("sakura", [19, 61])] if LOW_SAKURA else [("maple",[43,79]),("oak",[31,67]),("sakura",[19,61])]
+species_seeds = [("sakura", [19, 61])] if (LOW_SAKURA or SAKURA_ONLY) else [("maple",[43,79]),("oak",[31,67]),("sakura",[19,61])]
 for species,seeds in species_seeds:
     for seed in seeds:
-        for lod in (["low"] if LOW_SAKURA else ["high", "balanced"]):
+        for lod in (["low"] if LOW_SAKURA else ["high", "balanced", "low"] if SAKURA_ONLY else ["high", "balanced"]):
             tree(species,seed,lod)

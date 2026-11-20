@@ -54,3 +54,35 @@ com o mesmo enquadramento. O vídeo começa fora dos limites de prefetch
 de detalhe e registra a caminhada. A área distante e a volta são
 exercitadas por posicionamento de revisão. Mobile é Balanced em
 Chromium emulado. Medição física continua pendente.
+
+## Passe visual v2
+
+As imagens 56 a 63 e os quadros da caminhada v1 mostravam grama em
+triângulos isolados, copas granuladas em rosa uniforme, troncos sem
+variação, uma faixa bege sobre o gramado e um horizonte lavado. A v2
+retém os mesmos enquadramentos para comparação.
+
+A Prefeitura descreve a acessibilidade da encosta como distante de
+caminhos pavimentados. O snapshot OSM do jogo registra especificamente
+a via 871510614 como Cherry Hill Trail e `surface=asphalt`. O passe
+mantém o eixo e representa o material como asfalto gasto. A proximidade
+dos agrupamentos de árvores com esse caminho é uma escolha artística.
+As 26 posições continuam sem confirmação individual.
+
+Os seis GLBs sakura foram reexportados pelo modo `--sakura-all` do
+gerador Blender. Os LODs compartilham a lógica de ramificação e
+reduzem ramos secundários e cards. O atlas autoral agrupa flores brancas
+com tons suaves nas pétalas. O shader de casca usa o próprio espaço da
+malha para variar cor e sulcos. O acabamento do chão usa materiais PBR,
+manchas de terra e tufos de folhas curvas em instâncias, filtrados pela
+inclinação e proximidade da trilha. Sombras de contato irregulares
+acompanham o relevo, e a água recebe reflexos estilizados no trecho da
+margem leste. A atmosfera tem gradiente de céu e distância de névoa local.
+
+As copas trocam de LOD por cobertura pontilhada na passagem opaca. A
+primeira apresentação de cada camada entra como evento de estreia;
+o vídeo e o JSON registram cobertura para distinguir uma transição
+gradual de um salto no percurso. O teste reprova variação abrupta
+na cobertura da camada entre frames. Ele não mede oclusão de cada
+árvore por pixel. A volta segue o mesmo corredor sem deslocar a
+personagem entre etapas, com mudanças de direção da câmera nas viradas.

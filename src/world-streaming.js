@@ -28,10 +28,10 @@ export class WorldStreaming {
         sector.result=result;
         sector.state='active';
         sector.activations++;
-        if(sector.pendingInitialPresentation)sector.firstPresentationCount++;
+        if(sector.pendingInitialPresentation||(sector.continuousPresentation&&sector.activations===1))sector.firstPresentationCount++;
         else{
           if(sector.inside&&sector.wasLate)sector.lateActivationCount++;
-          if(sector.inView)sector.visiblePopInCount++;
+          if(sector.inView&&!sector.continuousPresentation)sector.visiblePopInCount++;
         }
         sector.pendingInitialPresentation=false;
         sector.wasLate=false;
