@@ -54,6 +54,11 @@ function locate(point,active){
 
 function frameCamera(point,world,[x,z]){
   const aspect=innerWidth/innerHeight;
+  if(point.mapleTop){
+    const view=new THREE.OrthographicCamera(-30*aspect,30*aspect,30,-30,.1,300);
+    view.position.set(-139,85,1022);view.up.set(0,0,-1);view.lookAt(-139,0,1022);
+    return view;
+  }
   if(point.projection==='orthographic'){
     const ring=point.pond?world.features.find(f=>f.osmId===174225267)?.points:null;
     const [west,north,east,south]=ring?[
@@ -97,7 +102,7 @@ async function prepare(id){
   }
   const active=manager.active;
   active.stats.setQuality(quality);
-  await active.stats.streaming?.prime({pond:Boolean(point.pond),cherry:Boolean(point.cherry||point.id==='40-expanded-cherry-hill')});
+  await active.stats.streaming?.prime({maple:Boolean(point.maple),pond:Boolean(point.pond),cherry:Boolean(point.cherry||point.id==='40-expanded-cherry-hill')});
   const world=active.world,origin=world.mode==='osm'?'OSM REAL':'DEMO';
   const [minX,minZ,maxX,maxZ]=world.bbox;
   const geographicBounds=origin==='OSM REAL'&&world.origin?{

@@ -356,6 +356,9 @@ async function main(){
     const pond=await evaluateCherryHill(browser,started.target,bundle,safeMessage,{pond:true});
     checks.grenadierPond={status:pond.status,report:'grenadier-pond.json'};
     if(pond.status!=='passed')issues.push({type:'grenadier-pond-failed',message:pond.error??'Percurso ou ciclo de streaming incompleto.'});
+    const maple=await evaluateCherryHill(browser,started.target,bundle,safeMessage,{maple:true});
+    checks.mapleGarden={status:maple.status,report:'maple-garden.json'};
+    if(maple.status!=='passed')issues.push({type:'maple-garden-failed',message:maple.error??'Percurso ou streaming incompleto.'});
     const movementTrace=await evaluateMovement(browser,started.target,bundle,cameraEvaluation,Number(videoFps));
     checks.movement={status:movementTrace.status,report:'movement-diagnostics.json'};
     if(movementTrace.status!=='passed')issues.push({type:'movement-diagnostics-failed',
@@ -407,6 +410,7 @@ async function main(){
     await json('world-streaming.json',streaming);
     await json('cherry-hill.json',cherry);
     await json('grenadier-pond.json',pond);
+    await json('maple-garden.json',maple);
     await json('memory-gameplay.json',memoryGameplay);
     await json('movement-diagnostics.json',movementTrace);
     await json('automatic-camera-diagnostics.json',automaticCamera);
@@ -424,7 +428,7 @@ async function main(){
 
     // Explicit allowlist. Nothing outside this staging directory can enter the archive.
     const files=['metadata.json','performance.json','console-errors.json','geographic-correspondence.json',
-      'report.html','grenadier-pond.json',...(pond.video?[pond.video]:[]),'cherry-hill.json',...(cherry.video?[cherry.video]:[]),'world-streaming.json',...streaming.videos,...entranceFiles,'high-park-terrain-review.json',...terrainFiles,'memory-gameplay.json',...movementFiles,...standaloneFiles,...geographicFiles,...captures.flatMap(capture=>capture.file?[capture.file]:[]),...comparisonFiles];
+      'report.html','maple-garden.json',...(maple.video?[maple.video]:[]),'grenadier-pond.json',...(pond.video?[pond.video]:[]),'cherry-hill.json',...(cherry.video?[cherry.video]:[]),'world-streaming.json',...streaming.videos,...entranceFiles,'high-park-terrain-review.json',...terrainFiles,'memory-gameplay.json',...movementFiles,...standaloneFiles,...geographicFiles,...captures.flatMap(capture=>capture.file?[capture.file]:[]),...comparisonFiles];
     if((await run('zip',['-q','-X',archive,...files],{cwd:bundle})).code!==0)
       throw new Error('Falha ao criar o ZIP.');
     if((await run('unzip',['-tq',archive],{quiet:true})).code!==0)

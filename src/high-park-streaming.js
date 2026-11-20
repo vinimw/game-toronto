@@ -11,6 +11,7 @@ import {cherryHill} from './cherry-hill-manifest.js';
 import {buildCherryArt,cherryPlacements} from './cherry-hill-art.js';
 import {parkEnvironment,grovePosition} from './park-environment.js';
 import {buildPondShore,pondBounds,pondDetailId,pondId} from './grenadier-pond.js';
+import {buildMapleGarden,mapleWay,mapleSector,mapleBounds} from './maple-garden.js';
 import {WorldStreaming} from './world-streaming.js';
 
 const pilot=[-225,-201,225,170];
@@ -257,6 +258,21 @@ export function highParkStreaming(scene,world,sun,style,paths,activateEntrance,b
         dispose(){shore=null;art.root.removeFromParent();disposeScene(art.root);}};
     },
   });
+  const maple=world.features.find(feature=>feature.osmId===mapleWay);
+  let garden,gardenTick;
+  if(maple)manifests.push({
+    id:mapleSector,bounds:mapleBounds,loadRadius:75,keepRadius:150,lane:'garden',
+    lods:['high','balanced','low'],continuousPresentation:true,
+    assets:{source:'OSM 251569209 and procedural planting',shared:[]},
+    async load(signal,frame){
+      await frame();
+      signal.throwIfAborted();
+      const start=performance.now(),art=buildMapleGarden(world,maple,quality);
+      return {mount(){garden=art;gardenTick=undefined;scene.add(art.root);},
+        buildMs:performance.now()-start,estimatedGeometryBytes:estimatedGeometry(art.root),
+        dispose(){garden=null;art.root.removeFromParent();disposeScene(art.root);}};
+    },
+  });
   const stream=new WorldStreaming(manifests);
   return {
     add(...data){
@@ -270,6 +286,13 @@ export function highParkStreaming(scene,world,sun,style,paths,activateEntrance,b
     update:(position,velocity,look,view)=>{
       renderer=view.renderer;
       stream.update(position,velocity,look,view);
+      if(garden){
+        const now=performance.now(),dt=Math.min(100,now-(gardenTick??now));gardenTick=now;
+        const [x,z]=position,[a,b,c,d]=mapleBounds;
+        const distance=Math.hypot(Math.max(a-x,0,x-c),Math.max(b-z,0,z-d));
+        garden.coverage.value=THREE.MathUtils.clamp(garden.coverage.value+(distance<105?1:-1)*dt/550,0,1);
+        garden.root.visible=garden.coverage.value>0;
+      }
       if(shore){
         const now=performance.now(),dt=Math.min(100,now-(shoreTick??now));
         shoreTick=now;
@@ -286,12 +309,13 @@ export function highParkStreaming(scene,world,sun,style,paths,activateEntrance,b
       if(next===quality)return;
       quality=next;
       for(const sector of stream.sectors)
-        if((sector.id.startsWith(cherryHill.id+':')||sector.id.startsWith((seasonalGrove?.id??'')+':'))&&!sector.hasDetail())stream.evict(sector);
+        if(sector.id===mapleSector||((sector.id.startsWith(cherryHill.id+':')||sector.id.startsWith((seasonalGrove?.id??'')+':'))&&!sector.hasDetail()))stream.evict(sector);
       showCherryLod();showSeasonalLod();
     },
-    async prime({cherry=false,pond=false}={}){
-      await stream.prime(sector=>sector.id===pondDetailId?pond:
+    async prime({cherry=false,pond=false,maple=false}={}){
+      await stream.prime(sector=>sector.id===mapleSector?maple:sector.id===pondDetailId?pond:
         !sector.id.startsWith('west-road-sakura:')&&cherry===sector.id.startsWith(cherryHill.id+':'));
+      if(maple&&garden){garden.coverage.value=1;garden.root.visible=true;}
       if(pond&&shore)shore.coverage.value=1;
       if(cherry){blend=Number(quality!=='low');lowCoverage=1;showCherryLod();}
     },
@@ -300,6 +324,7 @@ export function highParkStreaming(scene,world,sun,style,paths,activateEntrance,b
       const sectors=stream.stats();
       return {cherryHill:{futureMemoryPosition:memoryAnchor,lod:cherryLod(),detailCoverage:blend,lowCoverage,trees:trees?.length??0,assets:cherryStats(),
         estimatedTextureBytes:cherryLod()?estimatedTextures(cherryLayers.get(cherryLod()).root,{shadow:{}}):0},
+        mapleGarden:{...sectors.find(sector=>sector.id===mapleSector),lod:garden?.quality??null,instances:garden?.count??0,coverage:garden?.coverage.value??0},
         grenadierPond:{...sectors.find(sector=>sector.id===pondDetailId),
           shoreInstances:shore?.count??0,lod:shore?.quality??null,coverage:shore?.coverage.value??0,
           cache:'procedural; no external assets'},

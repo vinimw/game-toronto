@@ -120,3 +120,17 @@ const pondReference=points.find(point=>point.id==='71-grenadier-pond');
 pondReference.osmFile='grenadier-pond-geographic-reference';
 points.push({...pondReference,id:'73-grenadier-pond-aerial-3d',osmFile:'grenadier-pond-aerial-3d',
   label:'Grenadier Pond · vista 3D oblíqua',pondOblique:true});
+
+for(const [n,label,eye,look,profile] of [
+  [74,'referência geográfica',[0,55,0],[-9,0,-4]],
+  [75,'vista 3D oblíqua',[17,28,-15],[-9,0,-4]],
+  [76,'chegada pela trilha',[4,2.5,2],[-9,.9,-4]],
+  [77,'folha vista da encosta',[24,14,-3],[-9,0,-4]],
+  [78,'canteiro e folhagem',[-5,2.2,1],[-10,.4,-4]],
+  [79,'caminhos junto ao canteiro',[5,5,9],[-7,0,0]],
+  [80,'encosta em direção ao lago',[31,15,2],[-84,-2,-12]],
+  [81,'Balanced mobile',[9,7,-3],[-10,0,-5],'mobile'],
+]){
+  points.push({...terrainView(n+'-maple-garden','Maple Leaf Garden · '+label,[-127.43,1025.98],125699405,eye,look,profile),
+    maple:true,...(n===74?{projection:'orthographic',mapleTop:true}:{})});
+}

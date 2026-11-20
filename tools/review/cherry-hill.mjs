@@ -39,7 +39,7 @@ async function verifyMobile(browser,target){
   }finally{await context.close();}
 }
 
-export async function evaluateCherryHill(browser,target,bundle,safeMessage,{pond=false}={}){
+export async function evaluateCherryHill(browser,target,bundle,safeMessage,{pond=false,maple=false}={}){
   const viewport={width:1280,height:720};
   const context=await browser.newContext({viewport,reducedMotion:'reduce'});
   let recording;
@@ -55,10 +55,11 @@ export async function evaluateCherryHill(browser,target,bundle,safeMessage,{pond
     const north=await stats(page);
     assert.equal(north.cherryHill.assets,null);
     assert.ok(north.cherryHill.futureMemoryPosition);
-    await stage([-198,561],Math.PI);
+    const startPose=maple?[-125,795]:[-198,561];
+    await stage(startPose,Math.PI);
     const position=()=>page.locator('#game canvas').evaluate(canvas=>JSON.parse(canvas.dataset.reviewPose).position.local);
-    await page.waitForFunction(()=>JSON.parse(document.querySelector('#game canvas').dataset.reviewPose).position.local[2]===561);
-    assert.equal((await stats(page)).cherryHill.lod,null);
+    await page.waitForFunction(z=>JSON.parse(document.querySelector('#game canvas').dataset.reviewPose).position.local[2]===z,startPose[1]);
+    if(!maple)assert.equal((await stats(page)).cherryHill.lod,null);
     await page.evaluate(()=>{
       const overlay=document.createElement('div');
       overlay.id='cherry-streaming-overlay';
@@ -84,7 +85,7 @@ export async function evaluateCherryHill(browser,target,bundle,safeMessage,{pond
           const known=new Map();
           function tick(now){
             intervals.push(now-previous);previous=now;
-            const {cherryHill,grenadierPond,renderer,sectors}=window.inspectWorldStreaming();
+            const {cherryHill,grenadierPond,mapleGarden,renderer,sectors}=window.inspectWorldStreaming();
             const position=JSON.parse(canvas.dataset.reviewPose).position.local;
             const coverage=cherryHill.detailCoverage+(1-cherryHill.detailCoverage)*cherryHill.lowCoverage;
             const ms=now-window.cherryVideoStart;
@@ -97,8 +98,8 @@ export async function evaluateCherryHill(browser,target,bundle,safeMessage,{pond
               }
             }
             if(now-last>150){
-              samples.push({ms,position,lod:cherryHill.lod,coverage,grenadierPond,renderer});
-              overlay.textContent=`${(ms/1000).toFixed(1)} s · ${label} · ${cherryHill.lod??'base'} · cobertura ${Math.round(coverage*100)}% · Lago ${grenadierPond.state??'base'} (${grenadierPond.shoreInstances})`;
+              samples.push({ms,position,lod:cherryHill.lod,coverage,grenadierPond,mapleGarden,renderer});
+              overlay.textContent=`${(ms/1000).toFixed(1)} s · ${label} · ${cherryHill.lod??'base'} · cobertura ${Math.round(coverage*100)}% · Lago ${grenadierPond.state??'base'} · Jardim ${mapleGarden.state??'base'} (${mapleGarden.instances})`;
               last=now;
             }
             if((Math.cos(yaw)>0?position[2]<=destination:position[2]>=destination)||now-start>=28000)
@@ -108,6 +109,30 @@ export async function evaluateCherryHill(browser,target,bundle,safeMessage,{pond
           requestAnimationFrame(tick);
         }),{label,destination,yaw});
       }finally{await page.keyboard.up('w');}
+    }
+    if(maple){
+      const ends=[1009,1030,813,1020];
+      legs.push(await walk('Chegada ao jardim',Math.PI,ends[0],5));
+      legs.push(await walk('Exploração do canteiro',Math.PI,ends[1],1));
+      const [x,,z]=await position();
+      await stage([x,z],Math.PI/2);
+      await page.waitForTimeout(2300);
+      legs.push(await walk('Afastamento',0,ends[2],5));
+      legs.push(await walk('Retorno ao jardim',Math.PI,ends[3],5));
+      const samples=legs.flatMap(leg=>leg.samples);
+      const timeline=[];
+      for(const sample of samples){
+        if(timeline.at(-1)?.state!==sample.mapleGarden.state)
+          timeline.push({ms:sample.ms,position:sample.position,...sample.mapleGarden});
+      }
+      const states=timeline.filter(event=>event.state!=='loading').map(event=>event.state);
+      const complete=legs.every((leg,i)=>Math.abs(leg.end[2]-ends[i])<3);
+      const video='maple-garden-walk.webm';
+      const playback=await recording.stop(join(bundle,video));
+      const passed=complete&&states.join(',').includes('active,idle,active')&&errors.length===0;
+      return {status:passed?'passed':'failed',complete,video,playback,timeline,errors,
+        p99Ms:percentile99(legs.flatMap(leg=>leg.intervals)),
+        route:legs.map(({intervals,...leg})=>({...leg,...frameStatistics(intervals)}))};
     }
     if(pond){
       const shoreYaw=2.3;
