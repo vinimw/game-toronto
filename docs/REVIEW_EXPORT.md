@@ -149,3 +149,11 @@ Use `npm run review:export -- --camera-evaluation` para incluir um vídeo
 do joystick com a telemetria na tela. Em uma sessão de desenvolvimento,
 `?movement-debug=1` mostra o painel temporário. A tecla C recentraliza
 a câmera no desktop. No celular, a ação fica em Ajuda.
+
+A partir da v3.1, o comando acima grava dois clipes identificados,
+joystick à direita e na diagonal. Cada clipe inclui a recentralização
+e o teste de interrupção manual. O diagnóstico também registra a troca
+de W+D para W, a liberação do joystick e a posição durante a
+recentralização. O botão de câmera no cabeçalho mobile equivale a C.
+Em Ajuda, alterne entre Estável e Assistido. O Assistido recentraliza
+uma vez após um movimento lateral seguido de repouso.

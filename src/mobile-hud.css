@@ -12,7 +12,7 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-#mission-toggle { display: none; }
+#mission-toggle, #btn-recenter { display: none; }
 #mission-details[hidden], #speed-panel-body[hidden] { display: none; }
 #mission-details > p { font-size: 12px; line-height: 1.55; color: #5b655b; margin: 0; }
 .speed-panel .speed-header {
@@ -41,6 +41,9 @@
   }
   .topbar { padding: calc(8px + var(--hud-safe-top)) var(--hud-right) 0 var(--hud-left); }
   .topbar .small-button { min-width: 44px; min-height: 44px; padding: 0 9px; }
+  #btn-recenter { display: inline-grid; place-items: center; }
+  .topbar .brand, .topbar .brand > div { min-width: 0; }
+  .topbar .brand-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .topbar .desktop-only, .bottom-left, .compass { display: none; }
   .footer-bar {
     min-height: calc(31px + var(--hud-safe-bottom));

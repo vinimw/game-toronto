@@ -304,7 +304,7 @@ async function main(){
     await Promise.all([json('metadata.json',metadata),json('performance.json',performance),json('console-errors.json',issues),json('geographic-correspondence.json',geography)]);
 
     await json('movement-diagnostics.json',movementTrace);
-    const movementFiles=['movement-diagnostics.json',...(movementTrace.video?[movementTrace.video]:[])];
+    const movementFiles=['movement-diagnostics.json',...movementTrace.videos];
 
     const imageFiles=[...geographicFiles.filter(file=>file.endsWith('.png')),...captures.flatMap(capture=>capture.file?[capture.file]:[])];
     const current={metadata,performance,readImage:file=>readFile(join(bundle,file))};

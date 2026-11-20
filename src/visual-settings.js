@@ -1,4 +1,5 @@
 export const cameraSettings={
+  cameraFollowMode:'stable',
   distance:7, pitch:.23, minDistance:3.5, maxDistance:24, minPitch:.08, maxPitch:.82,
   yawSensitivity:.006, pitchSensitivity:.003, orbit:11, clearanceRecovery:6,
 };
