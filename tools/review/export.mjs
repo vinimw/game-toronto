@@ -1,3 +1,4 @@
+import {evaluateAutomaticCamera} from './automatic-camera-evaluation.mjs';
 import {evaluateMovement} from './camera-evaluation.mjs';
 import {spawn,spawnSync} from 'node:child_process';
 import {access,mkdir,mkdtemp,readFile,rename,rm,writeFile} from 'node:fs/promises';
@@ -281,6 +282,11 @@ async function main(){
     checks.movement={status:movementTrace.status,report:'movement-diagnostics.json'};
     if(movementTrace.status!=='passed')issues.push({type:'movement-diagnostics-failed',
       message:'Consulte movement-diagnostics.json para os cenários que falharam.'});
+    const automaticCamera=await evaluateAutomaticCamera(browser,started.target,bundle,cameraEvaluation,Number(videoFps));
+    checks.automaticCamera={status:automaticCamera.status,report:'automatic-camera-diagnostics.json'};
+    if(automaticCamera.status!=='passed')issues.push({type:'automatic-camera-failed',
+      message:'Consulte automatic-camera-diagnostics.json para os cenários que falharam.'});
+    const videos=[...movementTrace.videos,...automaticCamera.videos];
     abort.signal.throwIfAborted();
     geography.git=git;
     const browserInfo={engine:'chromium',version:browser.version(),headless:true};
@@ -298,7 +304,7 @@ async function main(){
       reproducibility:{animationTimeSeconds:0,lighting:'Iluminação fixa da cena, sem relógio de dia.',
         proceduralSeedPolicy:'Sementes fixas definidas no gerador versionado pelo commit Git.'},
       viewport,resolution:viewport,captures,geographicEvidence:geographicFiles,
-      video:cameraEvaluation?{status:movementTrace.status==='passed'?'validated':'failed',files:movementTrace.videos,encodingFps:Number(videoFps)}
+      video:cameraEvaluation?{status:movementTrace.status==='passed'&&automaticCamera.status==='passed'?'validated':'failed',files:videos,encodingFps:Number(videoFps)}
         :{status:'not-generated',reason:'Use --camera-evaluation para gravar os clipes.'}};
     const performance={schemaVersion:2,runtime,environment:'Navegador automatizado. Os resultados não equivalem ao desempenho em dispositivos móveis reais.',
       method:'Intervalo bruto entre requestAnimationFrame. 15 intervalos de aquecimento e 75 amostras por vista estática.',
@@ -307,7 +313,8 @@ async function main(){
     await Promise.all([json('metadata.json',metadata),json('performance.json',performance),json('console-errors.json',issues),json('geographic-correspondence.json',geography)]);
 
     await json('movement-diagnostics.json',movementTrace);
-    const movementFiles=['movement-diagnostics.json',...movementTrace.videos];
+    await json('automatic-camera-diagnostics.json',automaticCamera);
+    const movementFiles=['movement-diagnostics.json','automatic-camera-diagnostics.json',...videos];
 
     const imageFiles=[...geographicFiles.filter(file=>file.endsWith('.png')),...captures.flatMap(capture=>capture.file?[capture.file]:[])];
     const current={metadata,performance,readImage:file=>readFile(join(bundle,file))};

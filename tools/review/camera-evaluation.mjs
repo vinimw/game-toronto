@@ -13,7 +13,7 @@ const scenarios=[
   {id:'joystick-diagonal',stick:[27,-27],expected:[Math.SQRT1_2,Math.SQRT1_2]},
 ];
 
-async function sampleMovement(page,duration){
+export async function sampleMovement(page,duration){
   return page.evaluate(ms=>new Promise(resolve=>{
     const canvas=document.querySelector('#game canvas');
     const start=performance.now(),samples=[];
@@ -54,7 +54,7 @@ async function exerciseObstruction(page,drive,label){
   const initial=await page.evaluate(([position,yaw])=>{
     // Cover the discontinuity when staging the separate route in a video.
     document.querySelector('#game canvas').animate([{opacity:0},{opacity:1}],{duration:220});
-    window.stageCameraObstructionReview(position,yaw);
+    window.stageCameraReview(position,yaw);
     return position;
   },[start,Math.PI]);
   await page.waitForFunction(([x,z])=>{
@@ -73,6 +73,30 @@ async function exerciseObstruction(page,drive,label){
   return {status:passed?'passed':'failed',start,durationMs,expectedBuilding,recovered,stable,travelled,...summary};
 }
 
+export async function enterHighPark(page,context,mobile){
+  const portal=page.locator('#action-btn');
+  let dispatch,stick;
+  if(mobile){
+    const touch=await context.newCDPSession(page);
+    dispatch=(type,touchPoints=[])=>touch.send('Input.dispatchTouchEvent',{type,touchPoints});
+    const box=await page.locator('#joystick').boundingBox();
+    stick=(dx,dy)=>({id:1,x:box.x+box.width/2+dx,y:box.y+box.height/2+dy});
+    await dispatch('touchStart',[stick(0,-38)]);
+    try{await portal.waitFor({timeout:6000});}
+    finally{await dispatch('touchEnd');}
+    await portal.tap();
+  }else{
+    await page.keyboard.down('w');
+    try{await portal.waitFor({timeout:6000});}
+    finally{await page.keyboard.up('w');}
+    await portal.click();
+  }
+  await page.waitForFunction(()=>document.querySelector('#app').dataset.region==='high-park'
+    && document.querySelector('#app').getAttribute('aria-busy')==='false');
+
+  return {dispatch,stick};
+}
+
 async function evaluateScenario(browser,server,bundle,scenario,record,fps){
   const mobile=Boolean(scenario.stick);
   const viewport=mobile?{width:390,height:844}:{width:1280,height:720};
@@ -82,7 +106,7 @@ async function evaluateScenario(browser,server,bundle,scenario,record,fps){
   let recording;
   let samples=[],releasePassed=true;
   try{
-    const url=new URL('/?review=1',server);
+    const url=new URL('/?review=1&camera-follow=stable',server);
     if(record){
       url.searchParams.set('movement-debug','1');
       url.searchParams.set('movement-scenario',scenario.id==='joystick-right'?'Joystick à direita':'Joystick na diagonal');
@@ -90,25 +114,7 @@ async function evaluateScenario(browser,server,bundle,scenario,record,fps){
     await page.route('https://fonts.googleapis.com/**',route=>route.fulfill({contentType:'text/css',body:''}));
     await page.goto(url.href);
     await page.waitForSelector('#game canvas[data-review-pose]');
-    const portal=page.locator('#action-btn');
-    let dispatch,stick;
-    if(mobile){
-      const touch=await context.newCDPSession(page);
-      dispatch=(type,touchPoints=[])=>touch.send('Input.dispatchTouchEvent',{type,touchPoints});
-      const box=await page.locator('#joystick').boundingBox();
-      stick=(dx,dy)=>({id:1,x:box.x+box.width/2+dx,y:box.y+box.height/2+dy});
-      await dispatch('touchStart',[stick(0,-38)]);
-      try{await portal.waitFor({timeout:6000});}
-      finally{await dispatch('touchEnd');}
-      await portal.tap();
-    }else{
-      await page.keyboard.down('w');
-      try{await portal.waitFor({timeout:6000});}
-      finally{await page.keyboard.up('w');}
-      await portal.click();
-    }
-    await page.waitForFunction(()=>document.querySelector('#app').dataset.region==='high-park'
-      && document.querySelector('#app').getAttribute('aria-busy')==='false');
+    const {dispatch,stick}=await enterHighPark(page,context,mobile);
 
     const label=text=>page.evaluate(text=>{document.documentElement.dataset.movementStage=text;},text);
     if(record){

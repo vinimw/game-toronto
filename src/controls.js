@@ -43,8 +43,10 @@ export function bindGameControls({canvas, joystick, stick, runButton, inputs, ca
   });
   listen(canvas, 'wheel', e => {
     e.preventDefault();
-    if (enabled() && Number.isFinite(e.deltaY)) camera.distance = Math.min(settings.maxDistance,
-      Math.max(settings.minDistance, camera.distance + Math.sign(e.deltaY)));
+    if(!enabled()||!Number.isFinite(e.deltaY))return;
+    const distance=Math.min(settings.maxDistance,Math.max(settings.minDistance,camera.distance+Math.sign(e.deltaY)));
+    if(distance!==camera.distance)onCameraInput(0);
+    camera.distance=distance;
   });
   listen(canvas, 'contextmenu', e => e.preventDefault());
   function moveJoystick(e) {

@@ -65,24 +65,6 @@ test('stable recenter is explicit, can be canceled and leaves held lateral input
   for(let i=0;i<10;i++)assert.equal(state.update(stopped),null);
 });
 
-test('assisted waits for all movement to stop and recenters once after releasing the stick',()=>{
-  const state=new CameraRecentering('stable');
-  const stopped={right:0,forward:0,heading:1,yaw:0,dt:.05};
-  state.setMode('assisted');
-  assert.equal(state.update(stopped),null);
-  state.update({...stopped,right:1,forward:1});
-  for(let i=0;i<20;i++)assert.equal(state.update({...stopped,forward:1}),null);
-  for(let i=0;i<4;i++)assert.equal(state.update(stopped),null);
-  assert.ok(state.update(stopped)>0);
-  let yaw=0;
-  for(let i=0;i<100;i++)yaw=state.update({...stopped,yaw})??yaw;
-  assert.ok(Math.abs(angleDelta(yaw,1))<.002);
-  assert.equal(state.update({...stopped,yaw}),null);
-  state.setMode('stable');
-  state.update({...stopped,right:1});
-  assert.equal(state.update(stopped),null);
-});
-
 test('recenter timing is consistent across frame rates',()=>{
   const outcomes=[30,60,120].map(fps=>{
     let yaw=0;
@@ -90,4 +72,109 @@ test('recenter timing is consistent across frame rates',()=>{
     return yaw;
   });
   close(outcomes[0],outcomes[1]);close(outcomes[1],outcomes[2]);
+});
+
+function automatic(speed=1,yaw=0,settings={}){
+  const follow=new CameraRecentering('assisted-auto',settings);
+  const player=new PlayerController();
+  player.setMultiplier(speed);
+  let position=[0,0],body=yaw;
+  return {
+    follow,
+    get yaw(){return yaw;},
+    drag(next){follow.manualInput();yaw=next;},
+    step(right,forward,dt=1/60){
+      const commandYaw=follow.movementYaw({right,forward,yaw});
+      const move=player.move(position,{right,forward,yaw:commandYaw,dt,canWalk:()=>true});
+      const delta=move.position.map((value,i)=>value-position[i]);
+      position=move.position;
+      yaw=follow.update({right,forward,heading:body,movementHeading:move.heading,yaw,dt})??yaw;
+      if(move.heading!==null)body=advanceCameraYaw(body,move.heading,dt,{rate:9});
+      return {delta,commandYaw,body};
+    },
+  };
+}
+
+for(const fps of [30,60,120]){
+  test(`assisted-auto: four sustained inputs preserve lateral motion and bounded yaw for 10 s at ${fps} Hz`,()=>{
+    for(const speed of [1,3])for(const [right,forward] of [[1,0],[1,1],joystickAxes(38,0),joystickAxes(27,-27)]){
+      const sim=automatic(speed,.8), dt=1/fps;
+      const scale=5.1*speed*dt/Math.max(1,Math.hypot(right,forward));
+      for(let i=0;i<fps*10;i++){
+        const {delta,commandYaw}=sim.step(right,forward,dt);
+        close(commandYaw,.8);
+        close(delta[0],scale*(right*Math.cos(.8)-forward*Math.sin(.8)));
+        close(delta[1],scale*(-right*Math.sin(.8)-forward*Math.cos(.8)));
+        assert.ok(Math.abs(angleDelta(.8,sim.yaw))<=Math.PI/12+1e-9);
+        assert.ok((delta[0]*Math.cos(sim.yaw)-delta[1]*Math.sin(sim.yaw))/scale>.48);
+      }
+      close(angleDelta(.8,sim.yaw),-Math.PI/12);
+    }
+  });
+}
+
+test('releasing lateral input at idle delays and then completes the shortest automatic turn',()=>{
+  const sim=automatic(1,-3);
+  const stick=joystickAxes(-38,0);
+  for(let i=0;i<60;i++)sim.step(...stick);
+  const previous=sim.yaw;
+  for(let i=0;i<24;i++){
+    close(sim.step(0,0).delta[0],0);
+    close(sim.yaw,previous);
+  }
+  let last=sim.yaw;
+  for(let i=0;i<180;i++){
+    sim.step(0,0);
+    assert.ok(angleDelta(last,sim.yaw)>=-1e-9);
+    last=sim.yaw;
+  }
+  close(angleDelta(sim.yaw,-3+Math.PI/2),0);
+  assert.equal(sim.follow.rotation.outcome,'completed');
+  const next=sim.step(0,1);
+  close(next.commandYaw,sim.yaw);
+  close(next.delta[0],-Math.sin(sim.yaw)*5.1/60);
+  close(next.delta[1],-Math.cos(sim.yaw)*5.1/60);
+});
+
+test('W held through release and rapid W → W+D → W never inherits the automatic yaw',()=>{
+  const sim=automatic(3);
+  for(let i=0;i<140;i++){
+    const lateral=i<65||i%8<2&&i<100?1:0;
+    const step=sim.step(lateral,1);
+    close(step.commandYaw,0);
+    close(step.delta[0],lateral*15.3/60/(lateral?Math.SQRT2:1));
+    close(step.delta[1],-15.3/60/(lateral?Math.SQRT2:1));
+  }
+  for(let i=0;i<120;i++)sim.step(0,1);
+  close(sim.yaw,0);
+});
+
+test('manual drag interrupts automatic turning and defers it for 1.5 s after the last delta',()=>{
+  const sim=automatic();
+  for(let i=0;i<60;i++)sim.step(1,0);
+  for(let i=0;i<35;i++)sim.step(0,0);
+  assert.equal(sim.follow.rotation.kind,'automatic');
+  sim.drag(.6);
+  assert.equal(sim.follow.rotation.outcome,'interrupted');
+  for(let i=0;i<60;i++)sim.step(0,0);
+  sim.drag(.8);
+  for(let i=0;i<90;i++){
+    sim.step(0,0);
+    close(sim.yaw,.8);
+  }
+  for(let i=0;i<200;i++)sim.step(0,0);
+  close(sim.yaw,-Math.PI/2);
+  assert.equal(sim.follow.rotation.outcome,'completed');
+});
+
+test('fallback and automatic-disabled settings leave angular control to the player',()=>{
+  const sim=automatic(1,0,{autoRecenterEnabled:false});
+  for(let i=0;i<60;i++)sim.step(1,0);
+  for(let i=0;i<120;i++)sim.step(0,0);
+  close(sim.yaw,0);
+  sim.follow.setMode('stable');
+  close(sim.step(1,0).commandYaw,0);
+  sim.follow.request(0,1);
+  sim.step(0,0);
+  assert.ok(sim.yaw>0);
 });

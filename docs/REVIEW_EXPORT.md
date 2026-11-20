@@ -139,7 +139,7 @@ diferentes. Os pares incompatíveis conservam as imagens lado a lado
 para inspeção e omitem deltas de desempenho. O relatório principal
 continua usando imagens relativas depois da extração.
 
-O export testa quatro entradas sustentadas de 10 segundos no High Park.
+O export preserva quatro testes de 10 segundos no High Park no modo Estável.
 D, W+D, joystick horizontal e joystick diagonal são medidos na base da
 câmera renderizada. O arquivo `movement-diagnostics.json` documenta
 input normalizado, posição, direção do corpo, yaw e velocidade projetada
@@ -155,8 +155,9 @@ joystick à direita e na diagonal. Cada clipe inclui a recentralização
 e o teste de interrupção manual. O diagnóstico também registra a troca
 de W+D para W, a liberação do joystick e a posição durante a
 recentralização. O botão de câmera no cabeçalho mobile equivale a C.
-Em Ajuda, alterne entre Estável e Assistido. O Assistido recentraliza
-uma vez após um movimento lateral seguido de repouso.
+Em Ajuda, alterne entre Automático (padrão) e Estável. O modo Automático
+limita o giro a 15° durante entrada lateral sustentada, espera 0,4 s
+após a liberação lateral e espera 1,5 s após o último gesto manual.
 
 Na v3.2, a gravação usa screenshots JPEG do viewport completo em 390 ×
 844, codificados em WebM. O export confere as dimensões do viewport
@@ -188,3 +189,18 @@ da câmera em relação a ela. Os vídeos identificam esse percurso extra
 quando a sessão é reposicionada para o teste. Os quatro cenários de
 movimento exigem rastros de recentralização concluída e interrompida
 para passar.
+
+
+Com `--camera-evaluation`, o export inclui dois clipes adicionais do modo
+Automático em WebM. O desktop usa 1280 × 720 e o mobile usa 390 × 844,
+ambos a 24 FPS por padrão. As sequências usam o teclado e eventos touch
+do Chromium em uma rota reproduzível do High Park.
+
+O arquivo `automatic-camera-diagnostics.json` registra input, yaw
+renderizado, referência de movimento, heading da personagem, estados da
+câmera, tempos e resultados das rotações e erro de velocidade por trecho.
+A referência de movimento é capturada no início do comando e mantida
+até soltá-lo. O mouse e o gesto touch podem atualizar a referência.
+O acompanhamento automático usa a direção do deslocamento executado
+com essa referência fixa. Os 15° são um limite de enquadramento durante
+a entrada lateral, inclusive quando ela muda de diagonal para lateral.

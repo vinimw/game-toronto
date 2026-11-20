@@ -93,10 +93,10 @@ async function validate(context,output,references,viewport,frameCount,fps){
   }
 }
 
-export async function startViewportVideo(page,viewport,fps=24){
+export async function startViewportVideo(page,viewport,fps=24,{touchControls=true}={}){
   if(![12,24].includes(fps))throw new RangeError('A gravação admite 12 ou 24 FPS.');
   const interval=1000/fps;
-  const geometry=await page.evaluate(()=>{
+  const geometry=await page.evaluate(touchControls=>{
     const rect=selector=>{
       const {x,y,width,height}=document.querySelector(selector).getBoundingClientRect();
       return {x,y,width,height};
@@ -105,8 +105,8 @@ export async function startViewportVideo(page,viewport,fps=24){
     return {viewport:{width:innerWidth,height:innerHeight},
       visualViewport:{width:visualViewport.width,height:visualViewport.height,scale:visualViewport.scale},
       canvas:{...rect('#game canvas'),pixelWidth:canvas.width,pixelHeight:canvas.height},
-      controls:Object.fromEntries(['#joystick','#mobile-run','#btn-recenter','#speed-panel','.footer-bar'].map(key=>[key,rect(key)]))};
-  });
+      controls:Object.fromEntries([...(touchControls?['#joystick','#mobile-run','#btn-recenter']:[]),'#speed-panel','.footer-bar'].map(key=>[key,rect(key)]))};
+  },touchControls);
   assert.deepEqual(geometry.viewport,viewport);
   assert.deepEqual(geometry.visualViewport,{...viewport,scale:1});
   assert.deepEqual(geometry.canvas,{x:0,y:0,...viewport,pixelWidth:viewport.width,pixelHeight:viewport.height});

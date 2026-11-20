@@ -1,5 +1,7 @@
 export const cameraSettings={
-  cameraFollowMode:'stable',
+  cameraFollowMode:'assisted-auto',
+  autoRecenterEnabled:true, autoRecenterDelay:.4, manualOverrideDelay:1.5,
+  lateralFollowMaxAngle:Math.PI/12, followSmoothTime:.2, maxAngularSpeed:Math.PI*2/3,
   distance:7, pitch:.23, minDistance:3.5, maxDistance:24, minPitch:.08, maxPitch:.82,
   yawSensitivity:.006, pitchSensitivity:.003, orbit:11, clearanceRecovery:6, minimumBodyDistance:3.5,
 };

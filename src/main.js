@@ -60,7 +60,8 @@ let albumUnlocked=gameState.state.unlockedMemories.includes(MEMORY_ID);
 const inputs={keys:new Set(),joystickX:0,joystickY:0,runTouch:false};
 const current={yaw:Math.PI*.55,pitch:cameraSettings.pitch,distance:cameraSettings.distance};
 const view={...current};
-const recentering=new CameraRecentering(cameraSettings.cameraFollowMode);
+const followModeDefault=reviewCapture&&flags.get('camera-follow')==='stable'?'stable':cameraSettings.cameraFollowMode;
+const recentering=new CameraRecentering(followModeDefault);
 let modalOpen=false,mapOpen=false,nearMemory=false,nearPortal=null,frameCounter=0,accum=0;
 let clock=0;
 const transition=$('scene-transition');
@@ -140,7 +141,7 @@ function showAlbum(){if(manager.loading)return;showModal(`<p class="eyebrow">SEU
 function showHelp(){
   if(manager.loading)return;
   showModal(`<p class="eyebrow">COMO JOGAR</p><h2 id="modal-title" class="memory-title">Um passeio por Toronto</h2><p class="memory-copy">Este protótipo valida a câmera, a movimentação, a importação de ruas e o sistema de memórias.</p><div class="help-rows"><p><strong>W A S D</strong><span>Caminhar</span></p><p><strong>Mouse / gesto</strong><span>Girar câmera</span></p><p><strong>Shift / ↟</strong><span>Correr</span></p><p><strong>E / tocar</strong><span>Interagir perto da memória</span></p><p><strong>M / I</strong><span>Mapa / Álbum</span></p><p><strong>Scroll</strong><span>Zoom da câmera</span></p></div><fieldset class="visual-settings"><legend>Câmera e gráficos</legend>
-    <label>Acompanhamento<select id="camera-follow-mode"><option value="stable">Estável</option><option value="assisted">Assistido</option></select></label>
+    <label>Acompanhamento<select id="camera-follow-mode"><option value="stable">Estável</option><option value="assisted-auto">Automático</option></select></label>
     <button id="camera-recenter" type="button">Recentralizar câmera</button>
     <label>Distância da câmera<input id="camera-distance" type="range" min="${cameraSettings.minDistance}" max="${cameraSettings.maxDistance}" step="0.1" value="${current.distance}"></label>
     <label>Inclinação da câmera<input id="camera-pitch" type="range" min="${cameraSettings.minPitch}" max="${cameraSettings.maxPitch}" step="0.01" value="${current.pitch}"></label>
@@ -203,7 +204,7 @@ window.addEventListener('keydown',e=>{
 window.addEventListener('keyup',e=>inputs.keys.delete(e.key.toLowerCase()));
 const controls=bindGameControls({canvas:renderer.domElement,joystick:$('joystick'),stick:$('stick'),
   runButton:$('mobile-run'),inputs,camera:current,settings:cameraSettings,enabled:()=>!manager.loading&&!modalOpen&&!mapOpen,
-  onCameraInput:()=>recentering.cancel()});
+  onCameraInput:()=>recentering.manualInput()});
 $('btn-recenter').addEventListener('click',requestRecenter);
 const speedPanel=bindSpeedPanel($('speed-panel'),player,{minimized:touchHud.matches});
 function resetTiming(){controls.reset();previous=performance.now();accum=frameCounter=0;}
@@ -224,9 +225,9 @@ function requestRecenter(){
 }
 let cameraClearance=null;
 const target=new THREE.Vector3();
-// Start the reproducible obstruction route without changing the saved game or
+// Stage reproducible camera routes without changing the saved game or
 // bypassing the scene transition. This hook is stripped from production.
-if(reviewCapture)window.stageCameraObstructionReview=([x,z],yaw)=>{
+if(reviewCapture)window.stageCameraReview=([x,z],yaw)=>{
   if(manager.loading||manager.active?.id!=='high-park'||world.mode!=='osm'||
     !stats.canWalk(x,z)||!Number.isFinite(yaw))throw new Error('Invalid High Park review pose.');
   avatar.root.position.set(x,0,z);
@@ -258,19 +259,20 @@ function animate(now){
   if(!manager.active)return;
   const blocked=manager.loading||modalOpen||mapOpen;
   const [right,forward]=blocked?[0,0]:movementInput();
-  const recenteredYaw=blocked?null:recentering.update({
-    right,forward,heading:avatar.root.rotation.y,yaw:view.yaw,dt,
-  });
   const blend=-Math.expm1(-dt*cameraSettings.orbit);
-  if(recenteredYaw!==null)current.yaw=view.yaw=recenteredYaw;
-  else view.yaw=advanceCameraYaw(view.yaw,current.yaw,dt,{rate:cameraSettings.orbit});
+  view.yaw=advanceCameraYaw(view.yaw,current.yaw,dt,{rate:cameraSettings.orbit});
   view.pitch+=(current.pitch-view.pitch)*blend;
   view.distance+=(current.distance-view.distance)*blend;
-  const cameraYaw=view.yaw;
+  const commandYaw=recentering.movementYaw({right,forward,yaw:view.yaw});
   const running=inputs.keys.has('shift')||inputs.runTouch;
   const previousPosition=[avatar.root.position.x,avatar.root.position.z];
-  const motion=player.move(previousPosition,{right,forward,yaw:cameraYaw,running,dt,canWalk:stats.canWalk});
+  const motion=player.move(previousPosition,{right,forward,yaw:commandYaw,running,dt,canWalk:stats.canWalk});
   if(finitePoint(motion.position))avatar.root.position.set(motion.position[0],0,motion.position[1]);
+  const recenteredYaw=blocked?null:recentering.update({
+    right,forward,heading:avatar.root.rotation.y,movementHeading:motion.heading,yaw:view.yaw,dt,elapsed:timing.real,
+  });
+  if(recenteredYaw!==null)current.yaw=view.yaw=recenteredYaw;
+  const cameraYaw=view.yaw;
   if(motion.heading!==null)
     avatar.root.rotation.y=advanceCameraYaw(avatar.root.rotation.y,motion.heading,dt,{rate:9});
   avatar.update(dt,motion.animationSpeed);
@@ -289,9 +291,14 @@ function animate(now){
     const displacement=motion.position.map((value,index)=>value-previousPosition[index]);
     camera.getWorldDirection(viewDirection);
     const renderedYaw=Math.atan2(-viewDirection.x,-viewDirection.z);
-    const projected=projectCameraMovement(displacement,renderedYaw).map(value=>dt?value/dt:0);
+    const projected=projectCameraMovement(displacement,commandYaw).map(value=>dt?value/dt:0);
+    const screenVelocity=projectCameraMovement(displacement,renderedYaw).map(value=>dt?value/dt:0);
     diagnostics={input:normalizeMoveInput(right,forward),cameraYaw:renderedYaw,characterHeading:avatar.root.rotation.y,
-      projected,obstruction:cameraClearance.diagnostics,commandSpeed:player.configuredSpeed(running),angularFollow:false,recentering:recentering.target!==null,cameraFollowMode:recentering.mode};
+      projected,screenVelocity,commandYaw,movementHeading:motion.heading,
+      obstruction:cameraClearance.diagnostics,commandSpeed:player.configuredSpeed(running),
+      angularFollow:recentering.target!==null&&recentering.rotation?.kind!=='shortcut',
+      recentering:recentering.target!==null&&recentering.rotation?.kind!=='lateral',
+      cameraFollowMode:recentering.mode,followState:recentering.phase,followTimeSeconds:recentering.clock,rotation:recentering.rotation};
     if(reviewCapture)diagnostics.obstruction.body=inspectCameraBody();
     if(debugPanel){
       const format=vector=>vector.map(value=>value.toFixed(2)).join(' / ');
@@ -301,8 +308,9 @@ Yaw câmera   ${cameraYaw.toFixed(2)} rad
 Corpo        ${diagnostics.characterHeading.toFixed(2)} rad
 Dist. câmera ${cameraClearance.distance.toFixed(2)} m
 Obstrução    ${cameraClearance.diagnostics.state}
+Comando yaw  ${commandYaw.toFixed(2)} rad
 Direita/frente ${format(projected)} m/s
-Modo: ${recentering.mode} · Recentralização: ${diagnostics.recentering?'ativa':'inativa'}`;
+Modo: ${recentering.mode} · ${diagnostics.followState}`;
     }
   }
   nearMemory=!!world.memory && Math.hypot(avatar.root.position.x-world.memory[0],avatar.root.position.z-world.memory[1])<5.3;
