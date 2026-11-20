@@ -7,7 +7,8 @@ import {findLandmark} from './landmarks.js';
 import {buildDemoCafe} from './demo-cafe.js';
 import {plantPark} from './park-vegetation.js';
 import {addPathBatches,terrainTexture,worldUVs} from './park-surfaces.js';
-import {parkStyle,realParkStyle,pathWidth} from './visual-settings.js';
+import {pathWidth} from './visual-settings.js';
+import {parkEnvironment} from './park-environment.js';
 const material=c=>new THREE.MeshLambertMaterial({color:c,side:THREE.DoubleSide});
 function flat(points,height,color){
   const s=new THREE.Shape(); points.forEach(([x,z],i)=>i?s.lineTo(x,-z):s.moveTo(x,-z));s.closePath();
@@ -25,7 +26,7 @@ function makeBuilding(f,index){
   const roof=flat(points,h+.04,rand()>.5?0x958575:0x8b8580); const group=new THREE.Group();group.add(mesh,roof);return group;
 }
 export function buildWorld(scene,world,portals=[],evidence){
-  const real=world.mode==='osm',style=real?realParkStyle:parkStyle;
+  const real=world.mode==='osm',environment=parkEnvironment(world),{style}=environment;
   scene.background=new THREE.Color(style.sky);scene.fog=new THREE.Fog(style.sky,...style.fog);
   const hemi=new THREE.HemisphereLight(style.hemisphere.sky,style.hemisphere.ground,style.hemisphere.strength);scene.add(hemi);
   const sun=new THREE.DirectionalLight(style.sun.color,style.sun.strength);sun.position.set(...style.sun.position);scene.add(sun);
@@ -75,7 +76,7 @@ export function buildWorld(scene,world,portals=[],evidence){
   for(const {model} of landmarks)model.decorate?.({canWalk,paths});
   if(furniture.length)clearings.push([60,114.5,10]);
   const vegetation=world.vegetation===false?{trees:0,cameraVolumes:[],setQuality(){}}:
-    plantPark(scene,world,portals,(point,radius)=>!canWalk(point[0],point[1],radius),clearings);
+    plantPark(scene,world,portals,(point,radius)=>!canWalk(point[0],point[1],radius),clearings,environment);
   const {trees,cameraVolumes,vegetationMetrics}=vegetation;
   const setDetailFocus=real?(x,z)=>{
     vegetation.setDetailFocus?.(x,z);
@@ -106,7 +107,7 @@ export function buildWorld(scene,world,portals=[],evidence){
       [px-1.8,pz-.125],[px+1.8,pz-.125],[px+1.8,pz+.125],[px-1.8,pz+.125],
     ]});
   }
-  return {canWalk,cameraObstacles,cameraVolumes,setCameraOccluders:vegetation.setCameraOccluders,setQuality,setDetailFocus,vegetationMetrics,memoryPoints,animateMemoryMarkers,trees,
+  return {environment:environment.id,canWalk,cameraObstacles,cameraVolumes,setCameraOccluders:vegetation.setCameraOccluders,setQuality,setDetailFocus,vegetationMetrics,memoryPoints,animateMemoryMarkers,trees,
     landmarks:landmarks.map(({definition:{build,...identity}})=>identity),
     counts:{paths:paths.length,buildings:buildings.length,water:waters.length,trees}};
 }

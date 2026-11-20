@@ -34,3 +34,20 @@ points.push(
   parkPoint('22-high-park-nature-centre-mobile-375','High Park · Nature Centre em 375 × 667',points[4],
     [-10,4,-2],[12,2.3,0],'mobileCompact'),
 );
+
+const sakuraView=(id,label,local,eye,look,profile='desktop')=>{
+  // Measured in the source snapshot's projected metres. Store the review pose
+  // in WGS84 so it remains stable even if a later snapshot shifts the origin.
+  const origin=[43.65235,-79.465];
+  const geo=[origin[0]-local[1]/111320,origin[1]+local[0]/(111320*Math.cos(origin[0]*Math.PI/180))];
+  return {id,label,region:'high-park',entry:'toronto-gate',mode:'osm',profile,
+    osm:{geo,feature:174188399,eye,look,heading:2.55}};
+};
+points.push(
+  sakuraView('33-high-park-west-road-sakura','West Road · aproximação pela calçada',[-61.5,32],
+    [3.8,3.25,-6.5],[-13,2.8,14]),
+  sakuraView('34-high-park-sakura-petalas','West Road · copa, ramos e pétalas',[-68.5,34],
+    [5.6,2.05,-4.4],[-6.5,2.55,1.6]),
+  sakuraView('35-high-park-sakura-mobile','West Road · floração em viewport mobile',[-67,31.5],
+    [10.3,3.35,-6.4],[-5.3,2.85,4],'mobile'),
+);

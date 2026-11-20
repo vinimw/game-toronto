@@ -92,7 +92,7 @@ async function prepare(id){
     source:'Projeção inversa dos limites locais.',
   }:null;
   const sceneInfo={
-    sceneId:active.scene.name,origin,
+    sceneId:active.scene.name,origin,environment:active.stats.environment,
     boundsLocal:{format:'[minX,minZ,maxX,maxZ]',values:world.bbox},
     geographicBounds,
     geographicOrigin:world.origin??null,

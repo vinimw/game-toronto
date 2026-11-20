@@ -1,7 +1,13 @@
 import * as THREE from 'three';
 import {nearSegment,pointInPolygon,seeded} from './geo.js';
 import {contactTexture} from './park-surfaces.js';
-import {parkStyle,realParkStyle,realParkDetailRadius,pathWidth,realPathAppearance,qualityProfiles} from './visual-settings.js';
+import {realParkStyle,realParkDetailRadius,pathWidth,realPathAppearance,qualityProfiles} from './visual-settings.js';
+
+import {grovePosition,parkEnvironment} from './park-environment.js';
+import {sakuraWoodGeometry,sakuraCrownGeometry} from './sakura-geometry.js';
+
+// One entry per existing species, retaining its seeded placement.
+const springFoliage=[0x86a960,0x5b7b58,0xb2b969,0x668356,0xaab477,0x769b5c];
 
 function pathSegments(features,real){
   const segments=[];
@@ -61,20 +67,22 @@ function grassTuft(){
   return geometry;
 }
 
-function broadCrown(phase){
+function broadCrown(phase,habit=null){
   const geometry=new THREE.DodecahedronGeometry(1);
   const positions=geometry.getAttribute('position');
   for(let i=0;i<positions.count;i++){
     const x=positions.getX(i),y=positions.getY(i),z=positions.getZ(i);
     const radius=.98+.10*Math.sin(x*5+z*3-y*4+phase);
-    positions.setXYZ(i,x*radius+.13*y,y*(.98+.08*Math.sin(z*6+phase)),z*radius);
+    const contour=habit==='oak'?.10*Math.cos(5*Math.atan2(z,x)+.6)*Math.max(0,1-y*y):
+      habit==='maple'?.065*Math.sin(y*6+z*3):0;
+    positions.setXYZ(i,x*(radius+contour)+.13*y,y*(.98+.08*Math.sin(z*6+phase)),z*(radius+contour));
   }
   geometry.computeVertexNormals();
   return geometry;
 }
 
-export function plantPark(scene,world,portals,blocked,clearings=[]){
-  const real=world.mode==='osm',style=real?realParkStyle:parkStyle;
+export function plantPark(scene,world,portals,blocked,clearings=[],environment=parkEnvironment(world)){
+  const real=world.mode==='osm',{style,grove:sakuraGrove}=environment;
   const rand=seeded(99471), segments=pathSegments(world.features,real);
   const footpaths=segments.filter(segment=>segment.edge<=1.65);
   const greens=world.features.filter(f=>f.kind==='green');
@@ -102,22 +110,27 @@ export function plantPark(scene,world,portals,blocked,clearings=[]){
     if(segments.some(({a,b,edge})=>nearSegment(point,a,b)<edge+radius+style.pathMargin))return false;
     return !blocked(point,radius);
   }
+  const spring=Boolean(sakuraGrove);
   const geometry={
     trunk:new THREE.CylinderGeometry(.19,.31,1,5),
-    round:real?broadCrown(1.5):new THREE.IcosahedronGeometry(1,1),
+    round:real?broadCrown(1.5,spring?'maple':null):new THREE.IcosahedronGeometry(1,1),
     spire:new THREE.CylinderGeometry(real?.28:.14,1,2,7),
     column:new THREE.IcosahedronGeometry(1,real?0:1),
-    spread:real?broadCrown(4):new THREE.DodecahedronGeometry(1),
+    spread:real?broadCrown(4,spring?'oak':null):new THREE.DodecahedronGeometry(1),
     grass:grassTuft(),
     ...(real?{flower:new THREE.CircleGeometry(1,5).rotateX(-Math.PI/2)}:{}),
     stone:new THREE.IcosahedronGeometry(1),
     contact:new THREE.PlaneGeometry(2,2).rotateX(-Math.PI/2),
+    ...(spring?{
+      sakuraWood:sakuraWoodGeometry(),sakuraPale:sakuraCrownGeometry(0),sakuraRose:sakuraCrownGeometry(1),
+      petal:new THREE.CircleGeometry(1,4).rotateX(-Math.PI/2),
+    }:{}),
   };
   const groups=new Map(), dummy=new THREE.Object3D(), color=new THREE.Color();
-  function add(shape,x,y,z,sx,sy,sz,tint,treeId){
+  function add(shape,x,y,z,sx,sy,sz,tint,treeId,rotation){
     const entries=groups.get(shape)||[];
     if(!groups.has(shape))groups.set(shape,entries);
-    dummy.position.set(x,y,z);dummy.scale.set(sx,sy,sz);dummy.rotation.y=rand()*Math.PI*2;dummy.updateMatrix();
+    dummy.position.set(x,y,z);dummy.scale.set(sx,sy,sz);dummy.rotation.y=rotation??rand()*Math.PI*2;dummy.updateMatrix();
     entries.push({x,z,treeId,matrix:dummy.matrix.clone(),color:color.set(tint).multiplyScalar(.86+rand()*.24).clone()});
   }
   const trees=[], cameraVolumes=[];
@@ -138,7 +151,7 @@ export function plantPark(scene,world,portals,blocked,clearings=[]){
       [minX+rand()*(maxX-minX),minZ+rand()*(maxZ-minZ)];
     if(!grove&&!segments.length&&!contains(greens,point))return false;
     const species=grove&&rand()<.68?grove.species:Math.floor(rand()*style.trees.length);
-    const tree=style.trees[species], scale=real?.66+rand()*.58:.7+rand()*.44;
+    const tree=style.trees[species], foliage=spring?(springFoliage[species]??tree.leaf):tree.leaf, scale=real?.66+rand()*.58:.7+rand()*.44;
     const width=tree.width*scale,height=tree.height*scale,depth=tree.depth*scale;
     const type=real?zone(point):null;
     const spacing=real&&type!=='wood'?style.treeSpacing+.35:style.treeSpacing;
@@ -147,16 +160,16 @@ export function plantPark(scene,world,portals,blocked,clearings=[]){
     const [x,z]=point,treeId=`tree:${trees.length}`;trees.push(point);
     const crownY=height-depth*.65;
     const trunkWidth=real?scale*(.77+width*.18):scale;
-    add('trunk',x,crownY*.5,z,trunkWidth,crownY,trunkWidth,0x826249,treeId);
-    add(tree.shape,x,crownY,z,width,depth,width*.9,tree.leaf,treeId);
+    add('trunk',x,crownY*.5,z,trunkWidth,crownY,trunkWidth,spring&&tree.shape==='spread'?0x5d5146:0x826249,treeId);
+    add(tree.shape,x,crownY,z,width,depth,width*.9,foliage,treeId);
     if(tree.shape==='spread'||tree.shape==='round'){
       const angle=real?rand()*Math.PI*2:0;
       const cx=x+width*(real?.52*Math.cos(angle):.53),cz=z+width*(real?.52*Math.sin(angle):.2);
-      add(tree.shape,cx,crownY-depth*.29,cz,width*.72,depth*.71,width*.72,tree.leaf,treeId);
+      add(tree.shape,cx,crownY-depth*.29,cz,width*.72,depth*.71,width*.72,foliage,treeId);
       cameraVolumes.push({id:treeId,kind:'tree',center:[cx,crownY-depth*.29,cz],radii:[width*.74,depth*.75,width*.74]});
     }
     if(tree.shape==='spire'){
-      add('spire',x,crownY+depth*.65,z,width*.68,depth*.62,width*.66,tree.leaf,treeId);
+      add('spire',x,crownY+depth*.65,z,width*.68,depth*.62,width*.66,foliage,treeId);
       cameraVolumes.push({id:treeId,kind:'tree',center:[x,crownY+depth*.65,z],radii:[width*.68,depth*.62,width*.66]});
     }
     add('contact',x+(real?1.05:.4),.009,z+(real?.86:.24),width*(real?1.8:1.22),1,width*(real?1.32:.86),real?0x46583e:0x596d4a);
@@ -191,7 +204,7 @@ export function plantPark(scene,world,portals,blocked,clearings=[]){
         const point=[a[0]+dx*distance-dz*lateral,a[1]+dz*distance+dx*lateral];
         if(!clear(point,.2)||(real&&!zone(point)))continue;
         const size=.18+rand()*.19;
-        add('grass',point[0],.008,point[1],size*1.3,size,size*1.3,i===0?0xb8a568:0x77954c);
+        add('grass',point[0],.008,point[1],size*1.3,size,size*1.3,i===0?(spring?0xa6b574:0xb8a568):(spring?0x87a25f:0x77954c));
         if(real&&i<2&&rand()<.23){
           add('flower',point[0],size*.83,point[1],.081,1,.081,rand()<.5?0xe9cb76:0xe7e3c8);
         }
@@ -209,17 +222,52 @@ export function plantPark(scene,world,portals,blocked,clearings=[]){
     if(!clear(point,size*1.13)||(real&&(!type||(type==='open'&&kind<.33))))continue;
     const [x,z]=point;details++;
     if(kind<.33){
-      add('shrub',x,size*.36,z,size,size*.52,size*.86,real?0x72894f:0x819864);
-      add('shrub',x+size*.17,size*.40,z-size*.17,size*.74,size*.61,size*.69,real?0x8a9c57:0x96a961);
+      add('shrub',x,size*.36,z,size,size*.52,size*.86,spring?0x647e4c:real?0x72894f:0x819864);
+      add('shrub',x+size*.17,size*.40,z-size*.17,size*.74,size*.61,size*.69,spring?0x8ca365:real?0x8a9c57:0x96a961);
     }
     else if(kind<.93){
-      const tint=rand()<.24?0xb8a568:0x77954c;
+      const tint=rand()<.24?(spring?0xa6b574:0xb8a568):(spring?0x87a25f:0x77954c);
       add('grass',x,.008,z,size*.92,size*1.23,size*.92,tint);
     }
     else add('stone',x,size*.21,z,size*.78,size*.54,size,0xb1a58b);
   }
+  const blossomPositions=[];
+  const center=sakuraGrove?grovePosition(world,sakuraGrove):null;
+  if(center){
+    const blossomRandom=seeded(1998);
+    for(const [dx,dz,scale] of sakuraGrove.trees){
+      const x=center[0]+dx,z=center[1]+dz;
+      if(!clear([x,z],3.35*scale)||trees.some(([a,b])=>Math.hypot(x-a,z-b)<3.1))continue;
+      const id='tree:'+trees.length,rotation=blossomRandom()*Math.PI*2;
+      trees.push([x,z]);
+      blossomPositions.push([x,z]);
+      add('sakuraWood',x,0,z,scale,scale,scale,0x776262,id,rotation);
+      add(blossomPositions.length%3?'sakuraPale':'sakuraRose',x,0,z,scale,scale,scale,0xffffff,id,rotation);
+      add('contact',x+.6,.009,z+.45,3.4*scale,1,2.5*scale,0x655749);
+      cameraVolumes.push(
+        {id,kind:'tree',center:[x,1.5*scale,z],radii:[.41*scale,1.6*scale,.41*scale]},
+        {id,kind:'tree',center:[x,4.1*scale,z],radii:[3.25*scale,1.68*scale,2.84*scale]},
+      );
+      for(let i=0;i<38;i++){
+        const angle=blossomRandom()*Math.PI*2,spread=Math.sqrt(blossomRandom())*5.2*scale;
+        const px=x+Math.cos(angle)*spread,pz=z+Math.sin(angle)*spread;
+        if(!clear([px,pz],.055))continue;
+        const size=.04+blossomRandom()*.075;
+        add('petal',px,.015,pz,size*1.55,1,size,i%3?0xf1cbc6:0xfff3dd);
+      }
+    }
+  }
   // Material/geometry sharing is local to this region, so SceneManager owns disposal.
   geometry.shrub=geometry.stone;
+  if(spring){
+    geometry.shrub=geometry.stone.clone();
+    const vertices=geometry.shrub.getAttribute('position');
+    for(let i=0;i<vertices.count;i++){
+      const x=vertices.getX(i),y=vertices.getY(i),z=vertices.getZ(i);
+      vertices.setXYZ(i,x+.19*y,y*(.9+.13*x),z*(1+.19*y));
+    }
+    geometry.shrub.computeVertexNormals();
+  }
   const detailBatches=[];
   let contacts;
   const treeInstances=new Map();
@@ -239,10 +287,10 @@ export function plantPark(scene,world,portals,blocked,clearings=[]){
     }
   }
   for(const [shape,entries] of groups){
-    const contact=shape==='contact';
+    const contact=shape==='contact',blossom=shape==='sakuraPale'||shape==='sakuraRose';
     const material=contact?new THREE.MeshBasicMaterial({map:contactTexture(),transparent:true,
       opacity:real?style.contactOpacity.high:.29,depthWrite:false}):
-      new THREE.MeshLambertMaterial({flatShading:true,side:shape==='grass'?THREE.DoubleSide:THREE.FrontSide});
+      new THREE.MeshLambertMaterial({vertexColors:blossom,...(blossom?{emissive:0xb8849b,emissiveIntensity:.22}:{}),flatShading:true,side:shape==='grass'?THREE.DoubleSide:THREE.FrontSide});
     const batch=new THREE.InstancedMesh(geometry[shape],material,entries.length);
     batch.name='park:'+shape;
     entries.forEach(({matrix,color,treeId},i)=>{
@@ -254,7 +302,7 @@ export function plantPark(scene,world,portals,blocked,clearings=[]){
     batch.computeBoundingSphere();
     scene.add(batch);
     if(contact)contacts=batch;
-    if(['shrub','grass','stone','flower'].includes(shape))detailBatches.push({batch,entries});
+    if(['shrub','grass','stone','flower','petal'].includes(shape))detailBatches.push({batch,entries});
   }
   for(const item of new Set(Object.values(geometry))){
     if(![...groups.keys()].some(shape=>geometry[shape]===item))item.dispose();
@@ -280,18 +328,20 @@ export function plantPark(scene,world,portals,blocked,clearings=[]){
   }
   function vegetationMetrics(){
     const count=(shape)=>groups.get(shape)?.length??0;
-    const grid=(shape)=>{
+    const grid=(...shapes)=>{
       const rows=Array.from({length:4},()=>Array(4).fill(0));
-      for(const {x,z} of groups.get(shape)??[]){
+      for(const {x,z} of shapes.flatMap(shape=>groups.get(shape)??[])){
         const row=Math.floor((z-minZ)/(maxZ-minZ)*4),col=Math.floor((x-minX)/(maxX-minX)*4);
         rows[row][col]++;
       }
       return rows;
     };
     const detailsEnabled=Object.fromEntries(detailBatches.map(({batch})=>[batch.name.slice(5),batch.count]));
-    return {procedural:true,placed:{trees:count('trunk'),shrubInstances:count('shrub'),grass:count('grass'),flowers:count('flower')},
+    return {procedural:true,environment:environment.id,
+      seasonal:sakuraGrove?{id:sakuraGrove.id,position:center,treePositions:blossomPositions,petals:count('petal')}:null,
+      placed:{trees:trees.length,shrubInstances:count('shrub'),grass:count('grass'),flowers:count('flower')},
       detailInstancesEnabled:detailsEnabled,grid:{bounds,order:'Norte a sul nas linhas, oeste a leste nas colunas.',
-        treeCounts:grid('trunk'),shrubInstanceCounts:grid('shrub')}};
+        treeCounts:grid('trunk','sakuraWood'),shrubInstanceCounts:grid('shrub')}};
   }
   return {trees:trees.length,cameraVolumes,setCameraOccluders,vegetationMetrics:real?vegetationMetrics:undefined,
     setDetailFocus:real?updateDetails:undefined,setQuality(next){

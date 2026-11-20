@@ -1,6 +1,6 @@
 export function makeTorontoWorld(definition) {
   return {
-    mode:'demo', vegetation:false, origin:{...definition.origin}, bbox:[-45,-35,45,45], memory:null,
+    mode:'demo', environment:'toronto-default', vegetation:false, origin:{...definition.origin}, bbox:[-45,-35,45,45], memory:null,
     label:'Toronto · área demonstrativa de transição, sem fidelidade geográfica',
     features:[
       {kind:'path',tags:{highway:'pedestrian'},points:[[-40,8],[0,8],[40,8]]},

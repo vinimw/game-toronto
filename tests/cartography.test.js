@@ -89,8 +89,9 @@ test('OSM visual details respect path clearance and quality reduces nearby detai
     }
     const distribution=stats.vegetationMetrics();
     assert.equal(distribution.procedural,true);
-    assert.equal(distribution.placed.trees,vegetation[0].count);
-    assert.equal(distribution.grid.treeCounts.flat().reduce((a,b)=>a+b,0),vegetation[0].count);
+    const treeCount=vegetation[0].count+(scene.getObjectByName('park:sakuraWood')?.count??0);
+    assert.equal(distribution.placed.trees,treeCount);
+    assert.equal(distribution.grid.treeCounts.flat().reduce((a,b)=>a+b,0),treeCount);
     const grass=scene.getObjectByName('park:grass'),full=grass.count;
     stats.setQuality('low');
     assert.equal(grounds.visible,false);
