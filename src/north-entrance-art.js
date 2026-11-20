@@ -44,6 +44,14 @@ export function entranceGateBlocks(world){
 
 export const entranceArtBounds=area;
 
+export function entranceGate(world,model){
+  const [x,z]=latLonToLocal(gateAnchor.lat,gateAnchor.lon,world.origin);
+  const gate=model.clone(true);
+  gate.position.set(x,world.terrain.at(x,z),z);
+  gate.rotation.y=.24;
+  return gate;
+}
+
 export function installEntranceArt(scene,world,sun,{models,surfaces,shared},paths){
   const originalSun=sun.position.clone();
   const originalShadowCamera={left:sun.shadow.camera.left,right:sun.shadow.camera.right,
@@ -94,9 +102,7 @@ export function installEntranceArt(scene,world,sun,{models,surfaces,shared},path
   }
   for(const chunk of scene.children.filter(object=>object.name==='terrain-chunk'))overlay(chunk.geometry,'grass');
   const gatePosition=latLonToLocal(gateAnchor.lat,gateAnchor.lon,world.origin);
-  const gate=models['north-gate'].clone(true);
-  gate.position.set(gatePosition[0],terrain.at(...gatePosition),gatePosition[1]);
-  gate.rotation.y=.24;
+  const gate=entranceGate(world,models['north-gate']);
   gate.traverse(mesh=>{
     if(!mesh.isMesh)return;
     if(mesh.material.name==='Masonry_PBR'){
@@ -156,13 +162,15 @@ export function installEntranceArt(scene,world,sun,{models,surfaces,shared},path
     cameraVolumes.push({kind:'tree',id:tree.id,center:[tree.x,tree.position.y+10.5,tree.z],radii:[5.8,4.6,5.8]});
   }
   let profile='high',lastFocus=null;
+  const highTrees=new Set();
   function refresh(){
     const [x,z]=lastFocus??gatePosition;
     const visibleBatches=new Set();
     for(const entries of instances.values()){
       const {tree}=entries[0];
       const distance=Math.hypot(tree.x-x,tree.z-z);
-      const high=profile==='high'&&distance<41;
+      const high=profile==='high'&&distance<(highTrees.has(tree.id)?45:41);
+      if(high)highTrees.add(tree.id);else highTrees.delete(tree.id);
       const visible=distance<(profile==='low'?105:165)&&!hidden.has(tree.id);
       for(const {batch,index,matrix,lod} of entries){
         const show=visible&&(high?lod==='high':lod==='balanced');

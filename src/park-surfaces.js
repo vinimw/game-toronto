@@ -115,9 +115,10 @@ function appendShoulders(a,b,half,width,length,{positions,colors}){
   }
 }
 
-export function addPathBatches(scene,paths,style,pathWidth,texture,onGeometry,real=false,terrain,overlay){
+export function addPathBatches(scene,paths,style,pathWidth,texture,onGeometry,real=false,terrain,overlay,materialFor){
   const batches=new Map(), shoulders=new Map(), featherPositions=[], featherColors=[];
   const evidence=onGeometry?new Map():null;
+  const colors=new Map();
   const add=(points,width,height,color)=>{
     if(!batches.has(color))batches.set(color,[]);
     const vertices=batches.get(color),start=vertices.length;
@@ -129,13 +130,15 @@ export function addPathBatches(scene,paths,style,pathWidth,texture,onGeometry,re
     const width=appearance?.width??pathWidth(feature);
     const color=real?style[appearance.surface]:feature.kind==='rail'?style.rail:
       width>=4 && !['pedestrian','living_street'].includes(feature.tags?.highway)?style.road:style.trail;
+    const key=materialFor?.(feature)?feature:color;
+    colors.set(key,color);
     const road=color!==style.trail;
     const height=real?(appearance.crossing?.035:road?.033:.031):.032;
     let strip;
     if(real){
-      if(!batches.has(color))batches.set(color,[]);
+      if(!batches.has(key))batches.set(key,[]);
       if(appearance.shoulder&&!shoulders.has(color))shoulders.set(color,{positions:[],colors:[]});
-      const vertices=batches.get(color),start=vertices.length/3;
+      const vertices=batches.get(key),start=vertices.length/3;
       appendJoinedPath(vertices,feature,width,height,appearance.shoulder,shoulders.get(color));
       strip={start,end:vertices.length/3};
     }else{
@@ -144,23 +147,26 @@ export function addPathBatches(scene,paths,style,pathWidth,texture,onGeometry,re
       strip=add(feature.points,width,height,color);
     }
     if(evidence){
-      if(!evidence.has(color))evidence.set(color,[]);
-      evidence.get(color).push({feature,...strip});
+      if(!evidence.has(key))evidence.set(key,[]);
+      evidence.get(key).push({feature,...strip});
     }
   }
   function drape(vertices){
     if(!terrain)return;
     for(let i=0;i<vertices.length;i+=3)vertices[i+1]+=terrain.at(vertices[i],vertices[i+2]);
   }
-  for(const [color,vertices] of batches){
+  for(const [key,vertices] of batches){
+    const color=colors.get(key)??key;
     drape(vertices);
     const geometry=new THREE.BufferGeometry();
     geometry.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));
     geometry.computeVertexNormals();worldUVs(geometry,false,real);
-    const mesh=new THREE.Mesh(geometry,new THREE.MeshLambertMaterial({color,map:texture,side:THREE.DoubleSide}));
+    const base=new THREE.MeshLambertMaterial({color,map:texture,side:THREE.DoubleSide});
+    const mesh=new THREE.Mesh(geometry,typeof key==='object'?materialFor(key,base):base);
+    if(mesh.material!==base)base.dispose();
     scene.add(mesh);
     overlay?.(geometry,color);
-    for(const {feature,start,end} of evidence?.get(color)??[])onGeometry(feature,mesh,start,end);
+    for(const {feature,start,end} of evidence?.get(key)??[])onGeometry(feature,mesh,start,end);
   }
   if(!real)shoulders.set(style.verge,{positions:featherPositions,colors:featherColors});
   for(const [color,{positions,colors}] of shoulders){

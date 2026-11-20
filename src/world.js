@@ -1,3 +1,5 @@
+import {hillSurface,cherrySky} from './cherry-hill-surfaces.js';
+import {cherryHill} from './cherry-hill-manifest.js';
 import {resolveMemoryPoints} from './memories.js';
 import {addMemoryMarkers} from './memory-markers.js';
 import * as THREE from 'three';
@@ -36,6 +38,12 @@ export function buildWorld(scene,world,portals=[],evidence){
   const sun=new THREE.DirectionalLight(style.sun.color,style.sun.strength);sun.position.set(...style.sun.position);scene.add(sun);
   const {terrain}=world;
   const texture=terrainTexture(real);
+  const hill=terrain&&world.cherryEnabled!==false;
+  let hillSky,originalAtmosphere,atHill=false;
+  if(hill){
+    originalAtmosphere={background:scene.background,near:scene.fog.near,far:scene.fog.far};
+    scene.userData.disposeHillSky=()=>{if(hillSky!==scene.background)hillSky?.dispose();};
+  }
   if(!terrain){
     const groundGeometry=new THREE.PlaneGeometry(8000,8000);
     worldUVs(groundGeometry,true,real);
@@ -53,13 +61,28 @@ export function buildWorld(scene,world,portals=[],evidence){
     evidence?.polygon(feature,mesh);
   }
   let entrance=null,quality='high',detailFocus=[];
+  if(hill){
+    let grass;
+    for(const mesh of scene.children.filter(object=>object.name==='terrain-chunk')){
+      mesh.geometry.computeBoundingBox();
+      const {min,max}=mesh.geometry.boundingBox;
+      if(min.x>=-142||max.x<=-273||min.z>=890||max.z<=700)continue;
+      grass??=hillSurface(mesh.material,'ground');
+      mesh.material=grass;
+    }
+  }
   const pathLayers=[];
   waters.forEach(feature=>{
-    const mesh=flat(feature.points,terrain?.waterLevel(feature.points)??.02,style.water);scene.add(mesh);
+    const mesh=flat(feature.points,terrain?.waterLevel(feature.points)??.02,style.water);
+    if(hill&&feature.osmId===174225267){
+      const base=mesh.material;mesh.material=hillSurface(base,'water');base.dispose();
+    }
+    scene.add(mesh);
     evidence?.polygon(feature,mesh);
   });
   const routeMeshes=terrain?paths.map(feature=>({...feature,points:densify(feature.points)})):paths;
-  addPathBatches(scene,routeMeshes,style,pathWidth,texture,evidence?.strip,real,terrain,world.entranceEnabled?((geometry,color)=>pathLayers.push([geometry,color])):null);
+  addPathBatches(scene,routeMeshes,style,pathWidth,texture,evidence?.strip,real,terrain,world.entranceEnabled?((geometry,color)=>pathLayers.push([geometry,color])):null,
+    hill?((feature,base)=>feature.osmId===cherryHill.trailId&&(base?hillSurface(base,'path'):true)):null);
   const furniture=[],cameraObstacles=[],clearings=[];
   const landmarks=[],buildingBatches=terrain?terrainBuildingBatches(scene):null;
   const streaming=terrain?highParkStreaming(scene,world,sun,style,pathLayers,art=>{
@@ -113,12 +136,24 @@ export function buildWorld(scene,world,portals=[],evidence){
   const setCameraOccluders=ids=>{vegetation.setCameraOccluders?.(ids);entrance?.setOccluders(ids);};
   const setDetailFocus=real?(x,z)=>{
     detailFocus=[x,z];
+    if(hill){
+      const near=Number.isFinite(x)&&Math.hypot(x+201,z-785)<(atHill?215:180);
+      if(near!==atHill){
+        atHill=near;
+        if(near)hillSky??=cherrySky();
+        scene.background=near?hillSky:originalAtmosphere.background;
+        scene.fog.color.set(near?0xc9d6d9:style.sky);
+        scene.fog.near=near?125:originalAtmosphere.near;
+        scene.fog.far=near?490:originalAtmosphere.far;
+      }
+    }
     vegetation.setDetailFocus?.(x,z);
     entrance?.setDetailFocus(x,z);
     for(const {model} of landmarks)model.setFocus?.(x,z);
   }:undefined;
   function setQuality(profile){
     quality=profile;
+    streaming?.setQuality(profile);
     vegetation.setQuality(profile);
     entrance?.setQuality(profile);
     for(const {definition,model} of landmarks)

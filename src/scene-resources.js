@@ -24,5 +24,6 @@ export function collectResources(root) {
 
 export function disposeScene(scene, sharedResources=new Set()) {
   for(const resource of collectResources(scene))if(!sharedResources.has(resource))resource.dispose();
+  scene.userData.disposeHillSky?.();
   scene.clear();scene.background=null;scene.environment=null;scene.fog=null;
 }

@@ -24,6 +24,7 @@ async function timings(page){
     const totals=entries=>({requests:entries.length,transferBytes:entries.reduce((sum,item)=>sum+item.transferSize,0),
       encodedBodyBytes:entries.reduce((sum,item)=>sum+item.encodedBodySize,0)});
     return {firstImageMs:timing.firstImageMs,movementReadyMs:timing.movementReadyMs,
+      firstLandmarkVisibleMs:timing.firstLandmarkVisibleMs,firstLandmarkDetailedMs:timing.firstLandmarkDetailedMs,
       sceneActivationMs:timing.sceneActivationMs,base:totals(resources.filter(item=>new URL(item.name).pathname.startsWith('/data/'))),
       detail:totals(resources.filter(item=>new URL(item.name).pathname.startsWith('/assets/'))),
       sectorsActive:timing.sectors.filter(item=>item.state==='active').length};
@@ -43,7 +44,7 @@ async function open(browser,target,mobile,eager=false,blockEntrance=false){
         failures.push({file:url.pathname.split('/').at(-1),code:request.failure()?.errorText});
     });
     await page.route('https://fonts.googleapis.com/**',route=>route.fulfill({contentType:'text/css',body:''}));
-    if(blockEntrance)await page.route('**/north-gate.glb',route=>route.abort('failed'));
+    if(blockEntrance)await page.route('**/grass_medium_01-arm.jpg',route=>route.abort('failed'));
     await page.goto(new URL('/?review=1&park=expanded'+(eager?'&streaming=eager':''),target).href);
     await page.waitForSelector('#game canvas[data-review-pose]');
     await mapReady(page,'toronto');
@@ -68,25 +69,36 @@ async function travelLeg(page,controls,south){
     const canvas=document.querySelector('#game canvas');
     const start=performance.now(),finish=south?310:-105;
     let previous=start,last=0;
-    const intervals=[],samples=[];
+    const intervals=[],samples=[],stalls=[];
     function tick(now){
       const [x,y,z]=JSON.parse(canvas.dataset.reviewPose).position.local;
-      intervals.push(now-previous);previous=now;
+      const dt=now-previous;
+      intervals.push(dt);previous=now;
+      if(dt>50){
+        const diagnostic=window.inspectWorldStreaming();
+        stalls.push({ms:now-start,dt,lastRenderMs:diagnostic.lastRenderMs,
+          sectorEvents:diagnostic.sectors.filter(sector=>sector.lastEvent&&now-sector.lastEvent.at<250)
+            .map(({id,lastEvent,buildMs})=>({id,buildMs,...lastEvent}))});
+      }
       if(now-last>=250){
-        const {sectors,renderer,estimatedTextureAndShadowBytes}=window.inspectWorldStreaming();
-        samples.push({ms:now-start,position:[x,y,z],sectors:sectors.filter(item=>item.state==='active').map(item=>item.id),
+        const {sectors,landmarkState,renderer,estimatedTextureAndShadowBytes}=window.inspectWorldStreaming();
+        const label=document.querySelector('#streaming-video-overlay');
+        if(label)label.textContent=`${((now-Number(label.dataset.start))/1000).toFixed(2)} s · ${landmarkState} · ${sectors.find(s=>s.id==='high-park:north-entrance').state} · ${sectors.filter(s=>s.state==='active').map(s=>s.id.replace('high-park:','')).join(', ')}`;
+        samples.push({ms:now-start,videoMs:label?now-Number(label.dataset.start):null,landmarkState,position:[x,y,z],sectors:sectors.filter(item=>item.state==='active').map(item=>item.id),
           drawCalls:renderer.calls,triangles:renderer.triangles,textures:renderer.textures,geometries:renderer.geometries,
           estimatedTextureAndShadowBytes});
         last=now;
       }
-      if((south?z>=finish:z<=finish)||now-start>23000)resolve({intervals,samples,end:[x,y,z]});
+      if((south?z>=finish:z<=finish)||now-start>23000)resolve({intervals,samples,stalls,end:[x,y,z]});
       else requestAnimationFrame(tick);
     }
     requestAnimationFrame(tick);
   }),south));
   assert.ok(south?result.end[2]>=310:result.end[2]<=-105,'Percurso entre setores ficou incompleto: '+result.end);
   const stops=result.intervals.slice(1),stats=frameStatistics(stops);
-  return {start:initial,end:result.end,...stats,longFrames:stops.filter(ms=>ms>50).length,samples:result.samples};
+  const sorted=[...stops].sort((a,b)=>a-b);
+  return {start:initial,end:result.end,...stats,frameTimeMaxMs:sorted.at(-1),frameTimeP99Ms:sorted[Math.ceil(sorted.length*.99)-1],
+    stalls:result.stalls,longFrames:stops.filter(ms=>ms>50).length,samples:result.samples};
 }
 
 async function exploration(browser,target,mobile,bundle){
@@ -96,7 +108,10 @@ async function exploration(browser,target,mobile,bundle){
     const controls=await enterHighPark(page,context,mobile);
     await page.waitForFunction(()=>Number.isFinite(window.inspectWorldStreaming?.().firstImageMs));
     const coldStart=await timings(page);
+    const arrival=(await pose(page)).position.local;
+    await stage(page,[arrival[0],arrival[2]],0);
     await waitEntrance(page);
+    await page.waitForFunction(()=>Number.isFinite(window.inspectWorldStreaming().firstLandmarkDetailedMs));
     const coldDetail=await timings(page);
     assert.ok(coldStart.base.transferBytes>0);
     const before=await capture(page);
@@ -104,17 +119,6 @@ async function exploration(browser,target,mobile,bundle){
 
     await stage(page,[-8,-104],Math.PI);
     await page.waitForFunction(()=>Math.abs(JSON.parse(document.querySelector('#game canvas').dataset.reviewPose).position.local[0]+8)<.001);
-    if(!mobile){
-      recording=await startViewportVideo(page,viewport,24,{touchControls:false});
-      const walk=await hold(page,controls,()=>sampleMovement(page,8500));
-      assert.ok(walk.at(-1).position[2]-walk[0].position[2]>30);
-      const tile=before.sectors.find(({id,bounds:[x,z,east,south]})=>id!==entrance&&x<=-8&&east>-8&&z<=-104&&south>-104);
-      assert.ok(tile&&walk.at(-1).position[2]>=tile.bounds[3],'O vídeo deve cruzar a fronteira do primeiro setor.');
-      const file='world-streaming-walk.webm';
-      const validation=await recording.stop(join(bundle,file));
-      video={file,viewport,validation,start:walk[0].position,end:walk.at(-1).position,
-        crossedBoundaryZ:tile.bounds[3]};
-    }
     await stage(page,[-8,-104],Math.PI);
     await page.locator('#speed-panel input').evaluate(slider=>{
       slider.value='5';
@@ -122,10 +126,23 @@ async function exploration(browser,target,mobile,bundle){
     });
     const cycles=[];
     for(let i=0;i<(mobile?1:2);i++){
+      if(i===0){
+        await stage(page,[-8,-104],0);
+        await page.evaluate(()=>{
+          const label=document.createElement('div');
+          label.id='streaming-video-overlay';
+          label.dataset.start=performance.now();
+          label.textContent='Entrada norte · detailed · active';
+          label.style='position:fixed;z-index:99;left:8px;bottom:28%;pointer-events:none;background:#16271dea;color:white;padding:6px;font:11px monospace;max-width:92vw';
+          document.body.append(label);
+        });
+        recording=await startViewportVideo(page,viewport,12,{touchControls:mobile});
+        await page.waitForTimeout(600);
+      }
       const outward=await travelLeg(page,controls,true);
       await waitEntrance(page,'idle');
       const distant=await capture(page);
-      assert.equal(distant.assets.decodedActive,0);
+      assert.equal(distant.assets.decodedActive,1);
       assert.ok(distant.renderer.textures<before.renderer.textures,'Texturas da entrada continuam no renderer.');
       const traversed=before.sectors.filter(({id,bounds:[x,z,east,south]})=>
         id!==entrance&&x<=-8&&east>-8&&z<outward.end[2]&&south>outward.start[2]).map(sector=>sector.id);
@@ -136,6 +153,12 @@ async function exploration(browser,target,mobile,bundle){
       assert.equal(returned.assets.downloads,before.assets.downloads,'Assets baixados novamente ao retornar.');
       assert.ok(returned.assets.cacheHits>before.assets.cacheHits);
       cycles.push({traversed,outward,distant,inbound,returned});
+      if(i===0){
+        const file=mobile?'world-streaming-roundtrip-mobile.webm':'world-streaming-roundtrip-desktop.webm';
+        video={file,viewport,validation:await recording.stop(join(bundle,file)),cycle:0,
+          timeline:'cycles[0].outward.samples / inbound.samples, videoMs relative to overlay'};
+        await page.locator('#streaming-video-overlay').evaluate(label=>label.remove());
+      }
     }
     const returned=cycles.at(-1).returned;
     const baseline=cycles[0].returned;
@@ -154,7 +177,7 @@ async function exploration(browser,target,mobile,bundle){
     },far);
     await waitEntrance(page,'idle');
     const distantLanding=await capture(page);
-    assert.equal(distantLanding.assets.decodedActive,0);
+    assert.equal(distantLanding.assets.decodedActive,1);
     assert.equal(await application(page).getAttribute('aria-busy'),'false');
 
     const detail=await pose(page);
@@ -231,11 +254,11 @@ async function networkRecovery(browser,target){
     const walk=await hold(page,controls,()=>sampleMovement(page,750));
     assert.ok(walk.at(-1).position[2]-walk[0].position[2]>2,'A falha bloqueou os controles.');
     const failed=await capture(page);
-    await page.unroute('**/north-gate.glb');
+    await page.unroute('**/grass_medium_01-arm.jpg');
     await waitEntrance(page);
     const recovered=await capture(page);
     assert.equal(recovered.sectors.find(item=>item.id===entrance).failures>=1,true);
-    assert.equal(failures.some(item=>item.file==='north-gate.glb'&&item.code==='net::ERR_FAILED'),true);
+    assert.equal(failures.some(item=>item.file==='grass_medium_01-arm.jpg'&&item.code==='net::ERR_FAILED'),true);
     assert.ok(errors.every(message=>/net::ERR_(FAILED|ABORTED)/.test(message)),errors.join('\n'));
     return {status:'passed',failed,recovered,expectedNetworkFailures:failures,expectedConsoleErrors:errors};
   }finally{await context.close();}

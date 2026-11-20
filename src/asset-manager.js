@@ -5,6 +5,8 @@ export class AssetManager {
     Object.assign(this,{fetchBytes,decode,dispose,byteLimit,concurrency});
     this.live=new Map();
     this.binary=new Map();
+    this.downloaded=new Map();
+    this.hitsByKey=new Map();
     this.queue=[];
     this.running=0;
     this.transfers=0;
@@ -19,10 +21,13 @@ export class AssetManager {
       this.binary.delete(key);
       this.binary.set(key,data);
       this.hits++;
+      this.hitsByKey.set(key,(this.hitsByKey.get(key)??0)+1);
       return data;
     }
     const data=await this.fetchBytes(key,signal);
     this.downloads++;
+    const prior=this.downloaded.get(key)??{downloads:0,bytes:0};
+    this.downloaded.set(key,{downloads:prior.downloads+1,bytes:prior.bytes+data.byteLength});
     this.transfers+=data.byteLength;
     signal.throwIfAborted();
     if(data.byteLength<=this.byteLimit){
@@ -80,7 +85,18 @@ export class AssetManager {
     }};
   }
 
-  stats(){
+  stats(accept){
+    if(accept){
+      const live=[...this.live].filter(([key])=>accept(key)).map(([,job])=>job);
+      const binary=[...this.binary].filter(([key])=>accept(key));
+      const transferred=[...this.downloaded].filter(([key])=>accept(key)).map(([,data])=>data);
+      return {downloads:transferred.reduce((sum,data)=>sum+data.downloads,0),
+        decodedActive:live.filter(job=>job.value).length,pending:live.filter(job=>!job.value).length,
+        queued:this.queue.filter(job=>accept(job.key)).length,
+        cacheHits:[...this.hitsByKey].reduce((sum,[key,count])=>sum+(accept(key)?count:0),0),
+        cacheEntries:binary.length,cachedBytes:binary.reduce((sum,[,data])=>sum+data.byteLength,0),
+        downloadedPayloadBytes:transferred.reduce((sum,data)=>sum+data.bytes,0)};
+    }
     return {downloads:this.downloads,decodedActive:[...this.live.values()].filter(job=>job.value).length,
       pending:this.running,queued:this.queue.length,cacheHits:this.hits,cacheEntries:this.binary.size,
       cachedBytes:this.cachedBytes,downloadedPayloadBytes:this.transfers};

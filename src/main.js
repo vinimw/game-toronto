@@ -73,6 +73,7 @@ let modalOpen=false,mapOpen=false,nearMemory=null,nearPortal=null,frameCounter=0
 let clock=0;
 const transition=$('scene-transition');
 const retry=$('transition-retry');
+let firstLandmarkVisibleMs=null,firstLandmarkDetailedMs=null,lastRenderMs=null;
 let transitionStarted=0,firstImageMs=null,movementReadyMs=null,firstRender=0;
 async function startGame(){
   retry.hidden=true;
@@ -90,7 +91,7 @@ retry.addEventListener('click',startGame);
 const manager=new SceneManager({manifest:regionManifest,loadRegion,buildScene:buildWorld,avatar,
   onBusy(busy){
     controls.reset();
-    if(busy){transitionStarted=performance.now();firstImageMs=movementReadyMs=null;gameState.save();hideToast();closeModal();toggleMap(false);nearPortal=null;nearMemory=null;$('action-wrap').classList.add('hidden');}
+    if(busy){transitionStarted=performance.now();firstImageMs=movementReadyMs=firstLandmarkVisibleMs=firstLandmarkDetailedMs=null;gameState.save();hideToast();closeModal();toggleMap(false);nearPortal=null;nearMemory=null;$('action-wrap').classList.add('hidden');}
     if(!busy&&manager.active)movementReadyMs=performance.now()-transitionStarted;
     $('app').setAttribute('aria-busy',String(busy));
   },
@@ -286,7 +287,7 @@ if(reviewCapture)window.stageCameraReview=([x,z],yaw)=>{
 };
 if(reviewCapture)window.inspectWorldStreaming=()=>({
   ...stats?.streaming?.stats(),
-  firstImageMs,movementReadyMs,sceneActivationMs:firstRender-transitionStarted,
+  firstImageMs,movementReadyMs,firstLandmarkVisibleMs,firstLandmarkDetailedMs,lastRenderMs,sceneActivationMs:firstRender-transitionStarted,
   renderer:{...renderer.info.memory,...renderer.info.render},
 });
 const reviewPoint=new THREE.Vector3();
@@ -305,6 +306,7 @@ function inspectCameraBody(){
   return {inFrame,lineOfSight};
 }
 const viewDirection=new THREE.Vector3();
+const landmarkFrustum=new THREE.Frustum(),landmarkProjection=new THREE.Matrix4();
 let previous=performance.now(),reviewFrame=0;
 function animate(now){
   const timing=frameTiming(now,previous);const dt=timing.simulation;previous=now;clock+=dt;
@@ -399,9 +401,20 @@ Modo: ${recentering.mode} · ${diagnostics.followState}`;
   camera.getWorldDirection(viewDirection);
   if(!world.streamingEager)stats.streaming?.update([avatar.root.position.x,avatar.root.position.z],
     dt>0?[(avatar.root.position.x-previousPosition[0])/dt,(avatar.root.position.z-previousPosition[1])/dt]:[0,0],
-    [viewDirection.x,viewDirection.z]);
+    [viewDirection.x,viewDirection.z],{renderer,position:[camera.position.x,camera.position.z],
+      cosHalfFov:1/Math.hypot(1,Math.tan(camera.fov*Math.PI/360)*camera.aspect)});
   renderer.shadowMap.enabled=Boolean(stats.entranceArt);
+  const renderStart=performance.now();
   renderer.render(manager.active.scene,camera);
+  lastRenderMs=performance.now()-renderStart;
+  const landmark=stats.streaming?.landmarkState();
+  if(reviewCapture&&firstLandmarkVisibleMs===null&&landmark&&landmark!=='pending'){
+    const bounds=stats.streaming.landmarkBounds();
+    landmarkProjection.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse);
+    if(bounds&&landmarkFrustum.setFromProjectionMatrix(landmarkProjection).intersectsBox(bounds))
+      firstLandmarkVisibleMs=performance.now()-transitionStarted;
+  }
+  if(landmark==='detailed')firstLandmarkDetailedMs??=performance.now()-transitionStarted;
   if(firstImageMs===null&&firstRender>=transitionStarted)firstImageMs=performance.now()-transitionStarted;
   // Development-only DOM diagnostics for repeated-transition GPU resource checks.
   if(import.meta.env.DEV)renderer.domElement.dataset.resources=JSON.stringify({...renderer.info.memory,
