@@ -45,7 +45,7 @@ test('round trips use stable geographic entries and keep exactly one avatar and 
     assert.equal(await manager.travel('high-park:toronto-gate'),true);
     assert.equal(manager.active.id,'toronto');
     assert.deepEqual(geographicPosition(manager),HIGH_PARK_GATE);
-    assert.equal(manager.active.stats.markerRoot,null);
+    assert.deepEqual(manager.active.stats.memoryPoints,[]);
     assert.equal(manager.active.scene.children.filter(o=>o===manager.avatar.root).length,1);
   }
   manager.unload();assert.equal(manager.avatar.root.parent,null);
@@ -163,7 +163,7 @@ test('inventory, memory and progress survive scene lifetimes and storage reload'
 test('disabled or corrupt storage does not block in-session progress',()=>{
   const game=createGameState({getItem(){throw new Error('disabled');},setItem(){throw new Error('disabled');}});
   game.unlockMemory(MEMORY_ID);assert.deepEqual(game.state.unlockedMemories,[MEMORY_ID]);
-  assert.deepEqual(createGameState({getItem:()=>'{bad json'}).state,{unlockedMemories:[],inventory:[],progress:{}});
+  assert.deepEqual(createGameState({getItem:()=>'{bad json'}).state,{discoveredMemories:[],unlockedMemories:[],inventory:[],progress:{}});
 });
 
 test('manifest IDs are unique and invalid geographic references never activate',async()=>{

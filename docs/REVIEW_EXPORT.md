@@ -213,3 +213,12 @@ angulares e erro angular. Cada curva só passa se os quatro ângulos
 começarem a mudar no mesmo frame em que a entrada horizontal é aplicada.
 A semântica de direção e o endereço local do protótipo estão em
 [THIRD_PERSON_RIG.md](THIRD_PERSON_RIG.md).
+
+O fluxo de memória produz cinco vistas em 1280 × 720 e cinco em
+390 × 844. O teste usa a tecla E e o botão touch no jogo, caminha até
+o raio de interação, verifica o bloqueio e a retomada dos controles,
+reabre o conteúdo pelo álbum e confirma persistência após voltar de
+Toronto e reabrir a página. O diagnóstico fica em
+`memory-gameplay.json`. A câmera usa o modo padrão do jogo durante o
+ensaio. O ponto inicial do teste é posicionado pelo modo de desenvolvimento
+para repetir o trecho próximo ao Nature Centre.

@@ -1,4 +1,4 @@
-export function drawLocalMap(canvas,world,portals,position){
+export function drawLocalMap(canvas,world,portals,position,memories=[]){
   const {width,height}=canvas.getBoundingClientRect();
   if(!width||!height)return;
   const ratio=Math.min(devicePixelRatio,2);
@@ -54,8 +54,8 @@ export function drawLocalMap(canvas,world,portals,position){
   const close=(a,b,pixels)=>Math.hypot(a[0]-b[0],a[1]-b[1])*scale<pixels;
   for(const portal of portals)marker(portal.position,{color:'#9b6b2f',radius:5,square:true,
     offset:close(portal.position,position,18)?17:0});
-  if(world.memory)marker(world.memory,{color:'#b95164',radius:5,
-    offset:close(world.memory,position,18)||portals.some(portal=>close(portal.position,world.memory,14))?-17:0});
+  for(const point of memories)marker(point,{color:'#b95164',radius:5,
+    offset:close(point,position,18)||portals.some(portal=>close(portal.position,point,14))?-17:0});
   marker(position,{color:'#274c40',radius:7});
   ctx.fillStyle='#354639';ctx.font='700 12px system-ui';ctx.textAlign='right';ctx.fillText('↑ N',width-8,15);
 }

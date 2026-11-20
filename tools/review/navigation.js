@@ -11,7 +11,7 @@ export function validateNavigation(active){
   const target=points.at(-1);
   const walk=active.stats.canWalk;
   const freeSpawn=walk(...origin)&&walk(...origin,PLAYER_RADIUS+.1)&&
-    !active.scene.getObjectByName('memory-marker')&&
+    active.stats.memoryPoints.every(({position})=>Math.hypot(position[0]-origin[0],position[1]-origin[1])>2)&&
     !active.portals.some(portal=>active.scene.getObjectByName(portal.id))&&
     !active.stats.cameraVolumes.some(({center,radii})=>center[1]-radii[1]<2.2&&
       Math.hypot(center[0]-origin[0],center[2]-origin[1])<Math.max(radii[0],radii[2])+PLAYER_RADIUS);

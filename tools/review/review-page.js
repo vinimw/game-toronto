@@ -121,7 +121,7 @@ async function prepare(id){
   avatar.root.position.set(position[0],0,position[1]);
   avatar.root.rotation.y=point.heading;
   active.stats.setQuality(quality);
-  active.stats.markerRoot?.userData.animate(0);
+  active.stats.animateMemoryMarkers?.(0);
   camera=frameCamera(point,world,position);
   if(camera.isOrthographicCamera)active.stats.setDetailFocus?.();
   else active.stats.setDetailFocus?.(camera.position.x,camera.position.z);

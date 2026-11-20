@@ -27,7 +27,7 @@ export function prepareHighParkMap(data){
   const canWalk=createWalkTest(features,bbox);
   if(!canWalk(...spawn)||nearestOnPath(spawn,features,pedestrianPath).dist>.10)
     throw new Error('A chegada não coincide com uma calçada caminhável do recorte.');
-  // Keep the existing memory, projected onto the same accessible sidewalk.
+  // Keep the legacy vegetation clearance anchor so procedural planting stays fixed.
   const memoryAnchor=latLonToLocal(43.652846,-79.4653253,origin);
   const marker=nearestOnPath(memoryAnchor,features,f=>pedestrianPath(f)&&f.osmId===174188399);
   const memory=marker.dist<5&&canWalk(...marker.point)?marker.point:spawn;

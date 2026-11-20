@@ -2,10 +2,13 @@ import {ThirdPersonRig} from './third-person-rig.js';
 import * as THREE from 'three';
 import './styles.css';
 import './mobile-hud.css';
+import './memory.css';
 import {SceneManager} from './scene-manager.js';
 import {regionManifest} from './regions.js';
 import {loadRegion} from './scenes/load-region.js';
-import {createGameState, MEMORY_ID} from './game-state.js';
+import {createGameState} from './game-state.js';
+import {memories,nearbyMemory} from './memories.js';
+import {albumMarkup,memoryMarkup,showPhotoFallbacks} from './memory-ui.js';
 import {cameraSettings,qualityProfiles} from './visual-settings.js';
 import {resolveGameplayCamera} from './park-camera.js';
 import {buildWorld} from './world.js';
@@ -57,7 +60,7 @@ const avatar=createCharacter(new THREE.Group());
 const player=new PlayerController();
 let storage;try{storage=localStorage;}catch{}
 const gameState=createGameState(storage);
-let albumUnlocked=gameState.state.unlockedMemories.includes(MEMORY_ID);
+const isUnlocked=id=>gameState.state.unlockedMemories.includes(id);
 const inputs={keys:new Set(),joystickX:0,joystickY:0,runTouch:false};
 const current={yaw:Math.PI*.55,pitch:cameraSettings.pitch,distance:cameraSettings.distance};
 const view={...current};
@@ -66,13 +69,13 @@ const followModeDefault=['stable','assisted-auto'].includes(requestedReviewMode)
 const recentering=new CameraRecentering(followModeDefault);
 const coupledRig=new ThirdPersonRig();
 const usesCoupledRig=()=>recentering.mode==='third-person-coupled';
-let modalOpen=false,mapOpen=false,nearMemory=false,nearPortal=null,frameCounter=0,accum=0;
+let modalOpen=false,mapOpen=false,nearMemory=null,nearPortal=null,frameCounter=0,accum=0;
 let clock=0;
 const transition=$('scene-transition');
 const manager=new SceneManager({manifest:regionManifest,loadRegion,buildScene:buildWorld,avatar,
   onBusy(busy){
     controls.reset();
-    if(busy){gameState.save();hideToast();closeModal();toggleMap(false);nearPortal=null;nearMemory=false;$('action-wrap').classList.add('hidden');}
+    if(busy){gameState.save();hideToast();closeModal();toggleMap(false);nearPortal=null;nearMemory=null;$('action-wrap').classList.add('hidden');}
     $('app').setAttribute('aria-busy',String(busy));
   },
   async fade(opaque,name){
@@ -98,16 +101,20 @@ const manager=new SceneManager({manifest:regionManifest,loadRegion,buildScene:bu
     $('game').setAttribute('aria-label',`Cenário tridimensional de ${regionManifest[active.id].name}`);
     $('app').dataset.region=active.id;document.title=`Game Love · ${regionManifest[active.id].name}`;
     $('position-text').textContent=`${Math.round(avatar.root.position.x)}m E · ${Math.round(-avatar.root.position.z)}m N`;
-    $('mission-card').classList.toggle('hidden',active.id!=='high-park');
+    $('mission-card').classList.toggle('hidden',!stats.memoryPoints.length);
     if(mapOpen)drawMiniMap();
   },
 });
-$('album-count').textContent=albumUnlocked?'1/1':'0/1';
-if(albumUnlocked)completeMission();
+updateMemoryProgress();
+function updateMemoryProgress(){
+  const count=memories.filter(memory=>isUnlocked(memory.id)).length;
+  $('album-count').textContent=count+'/'+memories.length;
+  $('mission-progress').textContent=count+'/'+memories.length;
+  $('mission-progress').setAttribute('aria-label',count+' de '+memories.length+' memórias');
+  if(memories.length&&count===memories.length)completeMission();
+}
 function completeMission(){
   $('mission-short').textContent='Memória encontrada';
-  $('mission-progress').textContent='1/1';
-  $('mission-progress').setAttribute('aria-label','1 de 1 memórias');
   $('mission-title').textContent='Memória encontrada ♡';
   $('mission-desc').textContent='Uma lembrança especial já faz parte do seu álbum. Você pode revisitá-la quando quiser.';
   $('mission-state').textContent='✓ CONCLUÍDA'; $('mission-state').classList.add('completed');
@@ -129,19 +136,21 @@ function closeModal(){
   if(!manager.loading)modalTrigger?.focus({preventScroll:true});
   modalTrigger=null;
 }
-function showMemory(){
-  if(manager.loading)return;
-  if(!albumUnlocked){albumUnlocked=true;gameState.unlockMemory(MEMORY_ID);
-    $('album-count').textContent='1/1';completeMission();showToast('Nova memória adicionada ao álbum ♡');}
-  showModal(`<p class="eyebrow">MEMÓRIA 01 / 01 · DESBLOQUEADA</p>
-  <div class="memory-art"><div class="memory-sun">✦</div><div class="memory-hill"></div><span>UMA TARDE ESPECIAL</span></div>
-  <h2 id="modal-title" class="memory-title">A primeira lembrança</h2>
-  <p class="memory-sub">HIGH PARK · TORONTO</p>
-  <p class="memory-copy">Esta é uma memória de exemplo. Aqui você poderá contar uma história real, incluir uma carta romântica e adicionar até três fotografias. A lembrança ficará guardada neste álbum após ser desbloqueada.</p>
-  <div class="photo-placeholders"><div>+ Foto 1</div><div>+ Foto 2</div><div>+ Foto 3</div></div>
-  <div class="memory-signoff">Com carinho, <span>♡</span></div>`);
+function showMemory(memory,firstOpening=false){
+  showModal(memoryMarkup(memory,firstOpening));
+  showPhotoFallbacks($('modal-content'));
 }
-function showAlbum(){if(manager.loading)return;showModal(`<p class="eyebrow">SEU INVENTÁRIO</p><h2 id="modal-title" class="memory-title">Álbum de memórias</h2><p class="memory-copy">Cada lugar guarda uma história. Explore o mapa para desbloquear lembranças especiais.</p><button id="album-memory" class="album-entry ${albumUnlocked?'':'album-locked'}"><span class="album-entry-icon">${albumUnlocked?'♡':'♧'}</span><span><b>${albumUnlocked?'A primeira lembrança':'Memória ainda não descoberta'}</b><small>High Park · ${albumUnlocked?'Toque para reviver':'Explore o parque para desbloquear'}</small></span><span>›</span></button>`);const b=$('album-memory');b.addEventListener('click',()=>{if(albumUnlocked)showMemory();else showToast('Primeiro descubra esta memória pelo parque.');});}
+function showAlbum(){
+  if(manager.loading||modalOpen||mapOpen)return;
+  showModal(albumMarkup(memories,gameState.state));
+  showPhotoFallbacks($('modal-content'));
+  for(const button of $('modal-content').querySelectorAll('[data-open-memory]')){
+    button.onclick=()=>{
+      const memory=memories.find(entry=>entry.id===button.dataset.openMemory);
+      if(memory&&isUnlocked(memory.id))showMemory(memory);
+    };
+  }
+}
 function showHelp(){
   if(manager.loading)return;
   showModal(`<p class="eyebrow">COMO JOGAR</p><h2 id="modal-title" class="memory-title">Um passeio por Toronto</h2><p class="memory-copy">Este protótipo valida a câmera, a movimentação, a importação de ruas e o sistema de memórias.</p><div class="help-rows"><p><strong>W A S D</strong><span>Caminhar</span></p><p><strong>Mouse / gesto</strong><span>Girar câmera</span></p><p><strong>Shift / ↟</strong><span>Correr</span></p><p><strong>E / tocar</strong><span>Interagir perto da memória</span></p><p><strong>M / I</strong><span>Mapa / Álbum</span></p><p><strong>Scroll</strong><span>Zoom da câmera</span></p></div><fieldset class="visual-settings"><legend>Câmera e gráficos</legend>
@@ -192,7 +201,13 @@ async function interact(){
   if(manager.loading||modalOpen||mapOpen)return;
   if(nearPortal){
     try{await manager.travel(nearPortal.id);}catch(error){console.error('Scene transition failed:',error);showToast('Não foi possível carregar o local. Tente novamente.');}
-  }else if(nearMemory)showMemory();
+  }else{
+    const point=nearbyMemory(stats?.memoryPoints??[],[avatar.root.position.x,avatar.root.position.z]);
+    if(!point)return;
+    const opened=gameState.unlockMemory(point.memory.id);
+    if(opened)updateMemoryProgress();
+    showMemory(point.memory,opened);
+  }
 }
 $('action-btn').addEventListener('click',interact);
 window.addEventListener('keydown',e=>{
@@ -219,7 +234,9 @@ function resetTiming(){controls.reset();previous=performance.now();accum=frameCo
 window.addEventListener('blur',resetTiming);
 document.addEventListener('visibilitychange',resetTiming);
 function drawMiniMap(){
-  drawLocalMap($('map-canvas'),world,manager.active.portals,[avatar.root.position.x,avatar.root.position.z]);
+  const known=stats.memoryPoints.filter(({memory})=>gameState.state.discoveredMemories.includes(memory.id));
+  drawLocalMap($('map-canvas'),world,manager.active.portals,[avatar.root.position.x,avatar.root.position.z],
+    known.map(point=>point.position));
 }
 function requestRecenter(){
   if(manager.loading||modalOpen||mapOpen)return;
@@ -290,7 +307,7 @@ function animate(now){
   const cameraYaw=view.yaw;
   avatar.update(dt,motion.animationSpeed);
   speedPanel.update(motion.speed);
-  stats.markerRoot?.userData.animate(clock);
+  stats.animateMemoryMarkers(clock);
 
   // Translate the whole orbit with the avatar. Smoothing its world position
   // would temporarily rotate the view after sideways motion.
@@ -331,10 +348,12 @@ Direita/frente ${format(projected)} m/s
 Modo: ${recentering.mode} · ${diagnostics.followState}`;
     }
   }
-  nearMemory=!!world.memory && Math.hypot(avatar.root.position.x-world.memory[0],avatar.root.position.z-world.memory[1])<5.3;
+  nearMemory=blocked?null:nearbyMemory(stats.memoryPoints,[avatar.root.position.x,avatar.root.position.z]);
+  if(nearMemory&&!gameState.state.discoveredMemories.includes(nearMemory.memory.id))
+    gameState.discoverMemory(nearMemory.memory.id);
   nearPortal=manager.nearbyPortal([avatar.root.position.x,avatar.root.position.z]);
   $('action-wrap').classList.toggle('hidden',(!nearMemory&&!nearPortal)||manager.loading||modalOpen||mapOpen);
-  $('action-label').textContent=nearPortal?nearPortal.label:albumUnlocked?'Revisitar lembrança':'Descobrir memória';
+  if(nearPortal||nearMemory)$('action-label').textContent=nearPortal?.label??nearMemory.memory.shortTitle;
   $('compass').textContent=(((cameraYaw%(Math.PI*2)+Math.PI*2)%(Math.PI*2))<Math.PI/4||((cameraYaw%(Math.PI*2)+Math.PI*2)%(Math.PI*2))>Math.PI*1.75)?'N':Math.sin(cameraYaw)>0?'O':'L';
   accum+=timing.real;frameCounter++;
   if(accum>.45){const metrics=frameMetrics(frameCounter,accum);frameCounter=0;accum=0;
@@ -352,6 +371,12 @@ Modo: ${recentering.mode} · ${diagnostics.followState}`;
     position:{local:avatar.root.position.toArray(),headingRadians:avatar.root.rotation.y},
     orbit:{yaw:cameraYaw,pitch:view.pitch,renderedYaw:diagnostics.cameraYaw},
     movement:diagnostics,
+    portals:manager.active.portals.map(({id,position})=>({id,position})),
+    memoryPoints:stats.memoryPoints.map(({memory,position})=>({
+      id:memory.id,position,radius:memory.radius,anchor:memory.anchor,
+      marker:manager.active.scene.getObjectByName('memory:'+memory.id)?.position.toArray()??null,
+      discovered:gameState.state.discoveredMemories.includes(memory.id),unlocked:isUnlocked(memory.id),
+    })),
     camera:{projection:camera.type,position:camera.position.toArray(),quaternion:camera.quaternion.toArray(),
       fovDegrees:camera.fov},
     graphics:{profile:quality,...qualityProfiles[quality],pixelRatio:renderer.getPixelRatio(),antialias:!mobile},

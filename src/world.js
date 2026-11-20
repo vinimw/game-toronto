@@ -1,3 +1,5 @@
+import {resolveMemoryPoints} from './memories.js';
+import {addMemoryMarkers} from './memory-markers.js';
 import * as THREE from 'three';
 import {createWalkTest, buildingHeight} from './movement.js';
 import {seeded} from './geo.js';
@@ -84,16 +86,9 @@ export function buildWorld(scene,world,portals=[],evidence){
     for(const {definition,model} of landmarks)
       model.setDetail(definition.detail[profile]??definition.detail.balanced);
   }
-  // Ground deco around memory: simple warm glow / recognizable interaction point.
-  let markerRoot=null;
-  if(world.memory&&world.mode!=='osm'){
-  markerRoot=new THREE.Group();markerRoot.name='memory-marker';markerRoot.position.set(world.memory[0],0,world.memory[1]);scene.add(markerRoot);
-  const plinth=new THREE.Mesh(new THREE.CylinderGeometry(1.2,1.2,.19,20),material(0xffedc9));plinth.position.y=.11;markerRoot.add(plinth);
-  const pedestal=new THREE.Mesh(new THREE.CylinderGeometry(.16,.16,1.05,10),material(0x90624d));pedestal.position.y=.7;markerRoot.add(pedestal);
-  const heart=new THREE.Mesh(new THREE.IcosahedronGeometry(.67,1),new THREE.MeshStandardMaterial({color:0xd56e75,emissive:0x9b3747,emissiveIntensity:.5,metalness:.04,roughness:.4}));heart.position.y=2.05;markerRoot.add(heart);
-  const halo=new THREE.Mesh(new THREE.TorusGeometry(.95,.033,6,36),new THREE.MeshBasicMaterial({color:0xffe7ae,transparent:true,opacity:.85}));halo.rotation.x=-Math.PI/2;halo.position.y=.23;markerRoot.add(halo);
-  markerRoot.userData.animate=t=>{heart.rotation.y=t*.55;heart.position.y=2.05+Math.sin(t*2)*.18;halo.material.opacity=.35+Math.abs(Math.sin(t*1.5))*.48;};
-  }
+  const regionId=scene.name.startsWith('region:')?scene.name.slice('region:'.length):null;
+  const memoryPoints=resolveMemoryPoints(regionId,world,canWalk);
+  const animateMemoryMarkers=addMemoryMarkers(scene,memoryPoints);
   for(const portal of world.mode==='osm'?[]:portals){
     const gate=new THREE.Group();gate.name=portal.id;gate.position.set(portal.position[0],0,portal.position[1]);
     const gateMaterial=material(0x85664c);
@@ -111,7 +106,7 @@ export function buildWorld(scene,world,portals=[],evidence){
       [px-1.8,pz-.125],[px+1.8,pz-.125],[px+1.8,pz+.125],[px-1.8,pz+.125],
     ]});
   }
-  return {canWalk,cameraObstacles,cameraVolumes,setCameraOccluders:vegetation.setCameraOccluders,setQuality,setDetailFocus,vegetationMetrics,markerRoot,trees,
+  return {canWalk,cameraObstacles,cameraVolumes,setCameraOccluders:vegetation.setCameraOccluders,setQuality,setDetailFocus,vegetationMetrics,memoryPoints,animateMemoryMarkers,trees,
     landmarks:landmarks.map(({definition:{build,...identity}})=>identity),
     counts:{paths:paths.length,buildings:buildings.length,water:waters.length,trees}};
 }

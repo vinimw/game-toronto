@@ -1,3 +1,4 @@
+import {evaluateMemoryGameplay,memoryCaptureCount} from './memory-gameplay.mjs';
 import {evaluateCoupledCamera} from './coupled-camera-evaluation.mjs';
 import {evaluateAutomaticCamera} from './automatic-camera-evaluation.mjs';
 import {evaluateMovement} from './camera-evaluation.mjs';
@@ -275,9 +276,16 @@ async function main(){
     const gameplay=await captureMobileGameplay(browser,started.target,bundle,safeMessage);
     checks.touch=gameplay.touch;
     const {geography,geographicFiles,motion}=desktop;
-    const captures=[...profiles.flatMap(result=>result.captures),...gameplay.captures]
+    const memoryGameplay=await evaluateMemoryGameplay(browser,started.target,bundle,safeMessage);
+    checks.memories={status:memoryGameplay.status,report:'memory-gameplay.json'};
+    const captures=[...profiles.flatMap(result=>result.captures),...gameplay.captures,
+      ...memoryGameplay.scenarios.flatMap(scenario=>scenario.captures)]
       .sort((a,b)=>a.id.localeCompare(b.id));
     const issues=[...profiles.flatMap(result=>result.issues),...gameplay.issues];
+    for(const scenario of memoryGameplay.scenarios){
+      if(scenario.status!=='passed')issues.push({type:'memory-gameplay-failed',scenario:scenario.id,message:scenario.error});
+      for(const message of scenario.errors)issues.push({type:'memory-gameplay-browser-error',scenario:scenario.id,message});
+    }
     const metrics=profiles.flatMap(result=>result.metrics);
     const movementTrace=await evaluateMovement(browser,started.target,bundle,cameraEvaluation,Number(videoFps));
     checks.movement={status:movementTrace.status,report:'movement-diagnostics.json'};
@@ -303,7 +311,7 @@ async function main(){
     const success=captures.filter(c=>c.status==='captured').length;
     const unavailable=captures.filter(c=>c.status==='unavailable').length;
     const failed=captures.length-success-unavailable;
-    const partial=success!==points.length+gameplayCaptures.length||geographicFiles.length!==3||
+    const partial=success!==points.length+gameplayCaptures.length+memoryCaptureCount||geographicFiles.length!==3||
       geography.cartography?.status!=='within-tolerance'||geography.navigation?.status!=='passed'||
       motion?.status!=='passed'||Object.values(checks).some(check=>check.status!=='passed')||
       issues.some(issue=>!issue.expected);
@@ -321,6 +329,7 @@ async function main(){
     const json=(file,value)=>writeFile(join(bundle,file),JSON.stringify(value,null,2)+'\n');
     await Promise.all([json('metadata.json',metadata),json('performance.json',performance),json('console-errors.json',issues),json('geographic-correspondence.json',geography)]);
 
+    await json('memory-gameplay.json',memoryGameplay);
     await json('movement-diagnostics.json',movementTrace);
     await json('automatic-camera-diagnostics.json',automaticCamera);
     await json('coupled-camera-diagnostics.json',{...coupledCamera,prototype:coupledPrototype});
@@ -337,7 +346,7 @@ async function main(){
 
     // Explicit allowlist. Nothing outside this staging directory can enter the archive.
     const files=['metadata.json','performance.json','console-errors.json','geographic-correspondence.json',
-      'report.html',...movementFiles,...standaloneFiles,...geographicFiles,...captures.flatMap(capture=>capture.file?[capture.file]:[]),...comparisonFiles];
+      'report.html','memory-gameplay.json',...movementFiles,...standaloneFiles,...geographicFiles,...captures.flatMap(capture=>capture.file?[capture.file]:[]),...comparisonFiles];
     if((await run('zip',['-q','-X',archive,...files],{cwd:bundle})).code!==0)
       throw new Error('Falha ao criar o ZIP.');
     if((await run('unzip',['-tq',archive],{quiet:true})).code!==0)
