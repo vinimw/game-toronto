@@ -9,14 +9,22 @@ import {cameraSettings,qualityProfiles} from './visual-settings.js';
 import {avoidVegetation,recoverCameraArm} from './park-camera.js';
 import {buildWorld} from './world.js';
 import {createCharacter} from './character.js';
-import {finitePoint, resolveCamera, frameTiming, frameMetrics, movementDelta} from './movement.js';
+import {finitePoint, resolveCamera, frameTiming, frameMetrics, normalizeMoveInput, projectCameraMovement} from './movement.js';
 import {bindGameControls} from './controls.js';
-import {CameraFollow,angleDelta} from './camera-follow.js';
+import {advanceCameraYaw,allowsRecenter,angleDelta} from './camera-follow.js';
 import {PlayerController} from './player-controller.js';
 import {bindSpeedPanel} from './speed-panel.js';
 import {drawLocalMap} from './local-map.js';
 const $=id=>document.getElementById(id);
-const reviewCapture=import.meta.env.DEV&&new URLSearchParams(location.search).get('review')==='1';
+const flags=new URLSearchParams(location.search);
+const reviewCapture=import.meta.env.DEV&&flags.get('review')==='1';
+const movementDebug=import.meta.env.DEV&&flags.get('movement-debug')==='1';
+const debugPanel=movementDebug?document.createElement('pre'):null;
+if(debugPanel){
+  Object.assign(debugPanel.style,{position:'fixed',right:'8px',top:'22%',zIndex:'10',padding:'8px',
+    color:'#fff',background:'#182b22e8',fontSize:'11px',pointerEvents:'none'});
+  document.body.append(debugPanel);
+}
 const mobile=matchMedia('(pointer: coarse)').matches;
 const touchHud=matchMedia('(max-width: 600px), (pointer: coarse) and (max-width: 1024px)');
 const missionToggle=$('mission-toggle');
@@ -51,8 +59,8 @@ const gameState=createGameState(storage);
 let albumUnlocked=gameState.state.unlockedMemories.includes(MEMORY_ID);
 const inputs={keys:new Set(),joystickX:0,joystickY:0,runTouch:false};
 const current={yaw:Math.PI*.55,pitch:cameraSettings.pitch,distance:cameraSettings.distance};
-const cameraTarget=new THREE.Vector3();
-const cameraFollow=new CameraFollow(cameraSettings);
+const view={...current};
+let recenterHeading=null;
 let modalOpen=false,mapOpen=false,nearMemory=false,nearPortal=null,frameCounter=0,accum=0;
 let clock=0;
 const transition=$('scene-transition');
@@ -72,7 +80,7 @@ const manager=new SceneManager({manifest:regionManifest,loadRegion,buildScene:bu
   },
   onActivate(active){
     world=active.world;stats=active.stats;stats.setQuality(quality);
-    current.yaw=active.yaw;cameraFollow.reset();cameraTarget.set(avatar.root.position.x,1.48,avatar.root.position.z);cameraInitialized=false;
+    current.yaw=active.yaw;Object.assign(view,current);recenterHeading=null;cameraArm=1;
     note=world.mode==='osm'?'Geometria de OpenStreetMap (© colaboradores OSM)':(world.fallbackReason?'Cenário ilustrativo · '+world.fallbackReason:'Cenário demonstrativo ilustrativo · não representa a geografia real');
     const source=$('data-status');
     source.dataset.origin=world.mode==='osm'?'osm':'demo';
@@ -132,10 +140,12 @@ function showAlbum(){if(manager.loading)return;showModal(`<p class="eyebrow">SEU
 function showHelp(){
   if(manager.loading)return;
   showModal(`<p class="eyebrow">COMO JOGAR</p><h2 id="modal-title" class="memory-title">Um passeio por Toronto</h2><p class="memory-copy">Este protótipo valida a câmera, a movimentação, a importação de ruas e o sistema de memórias.</p><div class="help-rows"><p><strong>W A S D</strong><span>Caminhar</span></p><p><strong>Mouse / gesto</strong><span>Girar câmera</span></p><p><strong>Shift / ↟</strong><span>Correr</span></p><p><strong>E / tocar</strong><span>Interagir perto da memória</span></p><p><strong>M / I</strong><span>Mapa / Álbum</span></p><p><strong>Scroll</strong><span>Zoom da câmera</span></p></div><fieldset class="visual-settings"><legend>Câmera e gráficos</legend>
+    <button id="camera-recenter" type="button">Recentralizar câmera</button>
     <label>Distância da câmera<input id="camera-distance" type="range" min="${cameraSettings.minDistance}" max="${cameraSettings.maxDistance}" step="0.1" value="${current.distance}"></label>
     <label>Inclinação da câmera<input id="camera-pitch" type="range" min="${cameraSettings.minPitch}" max="${cameraSettings.maxPitch}" step="0.01" value="${current.pitch}"></label>
     <label>Qualidade gráfica<select id="visual-quality"><option value="low">Baixa</option><option value="balanced">Equilibrada</option><option value="high">Alta</option></select></label>
   </fieldset><p class="map-note">${note}.</p>`);
+  $('camera-recenter').onclick=()=>{closeModal();requestRecenter();};
   $('camera-distance').oninput=e=>current.distance=e.target.valueAsNumber;
   $('camera-pitch').oninput=e=>current.pitch=e.target.valueAsNumber;
   const select=$('visual-quality');select.value=quality;
@@ -182,13 +192,14 @@ window.addEventListener('keydown',e=>{
   if(mapOpen){if(key==='m'&&!e.repeat)toggleMap(false);return;}
   if(speedPanel.shortcut(e))return;
   if(key==='i'){showAlbum();return;}if(key==='m'){toggleMap();return;}
+  if(key==='c'){if(!e.repeat)requestRecenter();return;}
   if(key==='e'){if(!e.repeat)void interact();return;}
   inputs.keys.add(key);
 });
 window.addEventListener('keyup',e=>inputs.keys.delete(e.key.toLowerCase()));
 const controls=bindGameControls({canvas:renderer.domElement,joystick:$('joystick'),stick:$('stick'),
   runButton:$('mobile-run'),inputs,camera:current,settings:cameraSettings,enabled:()=>!manager.loading&&!modalOpen&&!mapOpen,
-  onCameraInput:delta=>cameraFollow.manualInput(performance.now(),delta)});
+  onCameraInput:()=>{recenterHeading=null;}});
 const speedPanel=bindSpeedPanel($('speed-panel'),player,{minimized:touchHud.matches});
 function resetTiming(){controls.reset();previous=performance.now();accum=frameCounter=0;}
 window.addEventListener('blur',resetTiming);
@@ -196,52 +207,74 @@ document.addEventListener('visibilitychange',resetTiming);
 function drawMiniMap(){
   drawLocalMap($('map-canvas'),world,manager.active.portals,[avatar.root.position.x,avatar.root.position.z]);
 }
-let cameraInitialized=false, cameraArm=1;
-const cameraOrbit=new THREE.Vector3();
+function movementInput(){
+  return [
+    Number(inputs.keys.has('d')||inputs.keys.has('arrowright'))-Number(inputs.keys.has('a')||inputs.keys.has('arrowleft'))+inputs.joystickX,
+    Number(inputs.keys.has('w')||inputs.keys.has('arrowup'))-Number(inputs.keys.has('s')||inputs.keys.has('arrowdown'))+inputs.joystickY,
+  ];
+}
+function requestRecenter(){
+  if(allowsRecenter(movementInput()[0]))recenterHeading=avatar.root.rotation.y;
+}
+let cameraArm=1;
+const target=new THREE.Vector3(),orbitDelta=new THREE.Vector3(),desiredCamera=new THREE.Vector3();
+const viewDirection=new THREE.Vector3();
 let previous=performance.now();
 function animate(now){
   const timing=frameTiming(now,previous);const dt=timing.simulation;previous=now;clock+=dt;
   if(!manager.active)return;
-  let x=(inputs.keys.has('d')||inputs.keys.has('arrowright')?1:0)-(inputs.keys.has('a')||inputs.keys.has('arrowleft')?1:0)+inputs.joystickX;
-  let z=(inputs.keys.has('w')||inputs.keys.has('arrowup')?1:0)-(inputs.keys.has('s')||inputs.keys.has('arrowdown')?1:0)+inputs.joystickY;
-  if(manager.loading||modalOpen||mapOpen){x=z=0;}
-  const running=inputs.keys.has('shift')||inputs.runTouch;
-  const movementReferenceYaw=cameraFollow.referenceYaw(x,z,angleDelta(0,current.yaw+cameraFollow.offset));
-  const motion=player.move([avatar.root.position.x,avatar.root.position.z],{right:x,forward:z,yaw:movementReferenceYaw,running,dt,canWalk:stats.canWalk});
-  if(finitePoint(motion.position))avatar.root.position.set(motion.position[0],0,motion.position[1]);
-  if(motion.heading!==null) {
-    const diff=Math.atan2(Math.sin(motion.heading-avatar.root.rotation.y),Math.cos(motion.heading-avatar.root.rotation.y));
-    avatar.root.rotation.y+=diff*(1-Math.exp(-dt*9));
+  const blocked=manager.loading||modalOpen||mapOpen;
+  const [right,forward]=blocked?[0,0]:movementInput();
+  if(!allowsRecenter(right))recenterHeading=null;
+  if(recenterHeading!==null&&!blocked){
+    current.yaw=advanceCameraYaw(view.yaw,recenterHeading,dt,{rate:5,maxSpeed:Math.PI*2/3});
+    if(Math.abs(angleDelta(current.yaw,recenterHeading))<.002)recenterHeading=null;
   }
-  cameraFollow.update({now,dt,manualYaw:current.yaw,right:x,forward:z,heading:motion.heading});
-  const cameraYaw=angleDelta(0,current.yaw+cameraFollow.offset);
+  const blend=-Math.expm1(-dt*cameraSettings.orbit);
+  view.yaw=recenterHeading===null?advanceCameraYaw(view.yaw,current.yaw,dt,{rate:cameraSettings.orbit}):current.yaw;
+  view.pitch+=(current.pitch-view.pitch)*blend;
+  view.distance+=(current.distance-view.distance)*blend;
+  const cameraYaw=view.yaw;
+  const running=inputs.keys.has('shift')||inputs.runTouch;
+  const previousPosition=[avatar.root.position.x,avatar.root.position.z];
+  const motion=player.move(previousPosition,{right,forward,yaw:cameraYaw,running,dt,canWalk:stats.canWalk});
+  if(finitePoint(motion.position))avatar.root.position.set(motion.position[0],0,motion.position[1]);
+  if(motion.heading!==null)
+    avatar.root.rotation.y=advanceCameraYaw(avatar.root.rotation.y,motion.heading,dt,{rate:9});
   avatar.update(dt,motion.animationSpeed);
   speedPanel.update(motion.speed);
   stats.markerRoot?.userData.animate(clock);
-  const target=new THREE.Vector3(avatar.root.position.x,1.48,avatar.root.position.z);
-  cameraTarget.lerp(target,1-Math.exp(-dt*cameraSettings.follow));
-  const horiz=current.distance*Math.cos(current.pitch);
-  const desired=new THREE.Vector3(cameraTarget.x+Math.sin(current.yaw)*horiz,cameraTarget.y+current.distance*Math.sin(current.pitch),cameraTarget.z+Math.cos(current.yaw)*horiz);
-  if(!cameraInitialized){cameraOrbit.copy(desired);cameraArm=1;cameraInitialized=true;}
-  else cameraOrbit.lerp(desired,1-Math.exp(-dt*cameraSettings.orbit));
-  // Resolve after smoothing, so interpolation cannot carry the camera through a wall.
-  const anchor=[avatar.root.position.x,1.48,avatar.root.position.z];
-  const orbitDelta=cameraOrbit.clone().sub(target);
-  if(cameraFollow.offset!==0){
-    const c=Math.cos(cameraFollow.offset),s=Math.sin(cameraFollow.offset);
-    const {x:offsetX,z:offsetZ}=orbitDelta;
-    orbitDelta.x=c*offsetX+s*offsetZ;
-    orbitDelta.z=c*offsetZ-s*offsetX;
-  }
-  const clearOrbit=resolveCamera(anchor,cameraFollow.offset===0
-    ?cameraOrbit.toArray():[target.x+orbitDelta.x,target.y+orbitDelta.y,target.z+orbitDelta.z],stats.cameraObstacles);
+
+  // Translate the whole orbit with the avatar. Smoothing its world position
+  // would temporarily rotate the view after sideways motion.
+  target.set(avatar.root.position.x,1.48,avatar.root.position.z);
+  const horizontal=view.distance*Math.cos(view.pitch);
+  orbitDelta.set(Math.sin(cameraYaw)*horizontal,view.distance*Math.sin(view.pitch),Math.cos(cameraYaw)*horizontal);
+  const anchor=target.toArray();
+  const clearOrbit=resolveCamera(anchor,desiredCamera.copy(target).add(orbitDelta).toArray(),stats.cameraObstacles);
   const safeCamera=avoidVegetation(anchor,clearOrbit,stats.cameraVolumes);
   const safeDistance=Math.hypot(safeCamera[0]-anchor[0],safeCamera[1]-anchor[1],safeCamera[2]-anchor[2]);
-  const limit=Math.min(1,safeDistance/Math.max(.001,orbitDelta.length()));
-  cameraArm=recoverCameraArm(cameraArm,limit,dt,cameraSettings.clearanceRecovery);
+  cameraArm=recoverCameraArm(cameraArm,Math.min(1,safeDistance/view.distance),dt,cameraSettings.clearanceRecovery);
   camera.position.copy(target).addScaledVector(orbitDelta,cameraArm);
-  // Keep the avatar in view during sudden turns or accelerated traversal.
-  camera.lookAt(cameraTarget.distanceToSquared(target)>1.5?target:cameraTarget);
+  camera.lookAt(target);
+
+  let diagnostics;
+  if(reviewCapture||movementDebug){
+    const displacement=motion.position.map((value,index)=>value-previousPosition[index]);
+    camera.getWorldDirection(viewDirection);
+    const renderedYaw=Math.atan2(-viewDirection.x,-viewDirection.z);
+    const projected=projectCameraMovement(displacement,renderedYaw).map(value=>dt?value/dt:0);
+    diagnostics={input:normalizeMoveInput(right,forward),cameraYaw:renderedYaw,characterHeading:avatar.root.rotation.y,
+      projected,commandSpeed:player.configuredSpeed(running),angularFollow:false,recentering:recenterHeading!==null};
+    if(debugPanel){
+      const format=vector=>vector.map(value=>value.toFixed(2)).join(' / ');
+      debugPanel.textContent=`Entrada X/Y  ${format(diagnostics.input)}
+Yaw câmera   ${cameraYaw.toFixed(2)} rad
+Corpo        ${diagnostics.characterHeading.toFixed(2)} rad
+Direita/frente ${format(projected)} m/s
+Auto-follow angular: desligado`;
+    }
+  }
   nearMemory=!!world.memory && Math.hypot(avatar.root.position.x-world.memory[0],avatar.root.position.z-world.memory[1])<5.3;
   nearPortal=manager.nearbyPortal([avatar.root.position.x,avatar.root.position.z]);
   $('action-wrap').classList.toggle('hidden',(!nearMemory&&!nearPortal)||manager.loading||modalOpen||mapOpen);
@@ -261,8 +294,8 @@ function animate(now){
     sceneId:manager.active.scene.name,origin:world.mode==='osm'?'OSM REAL':'DEMO',
     sourceSha256:world.sourceSha256??null,bboxWgs84:world.bboxWgs84??null,geographicOrigin:world.origin??null,
     position:{local:avatar.root.position.toArray(),headingRadians:avatar.root.rotation.y},
-    orbit:{yaw:cameraYaw,pitch:current.pitch,renderedYaw:Math.atan2(camera.position.x-target.x,camera.position.z-target.z)},
-    movement:{referenceYaw:movementReferenceYaw,direction:movementDelta(x,z,movementReferenceYaw,1,.05).map(value=>value/.05)},
+    orbit:{yaw:cameraYaw,pitch:view.pitch,renderedYaw:diagnostics.cameraYaw},
+    movement:diagnostics,
     camera:{projection:camera.type,position:camera.position.toArray(),quaternion:camera.quaternion.toArray(),
       fovDegrees:camera.fov},
     graphics:{profile:quality,...qualityProfiles[quality],pixelRatio:renderer.getPixelRatio(),antialias:!mobile},

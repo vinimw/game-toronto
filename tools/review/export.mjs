@@ -1,4 +1,4 @@
-import {evaluateCamera} from './camera-evaluation.mjs';
+import {evaluateMovement} from './camera-evaluation.mjs';
 import {spawn,spawnSync} from 'node:child_process';
 import {access,mkdir,mkdtemp,readFile,rename,rm,writeFile} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
@@ -276,16 +276,10 @@ async function main(){
       .sort((a,b)=>a.id.localeCompare(b.id));
     const issues=[...profiles.flatMap(result=>result.issues),...gameplay.issues];
     const metrics=profiles.flatMap(result=>result.metrics);
-    let cameraTrace;
-    if(cameraEvaluation){
-      try{cameraTrace=await evaluateCamera(browser,started.target,bundle,stage);}
-      catch(error){
-        cameraTrace={status:'failed',reason:safeMessage(error.message)};
-        issues.push({type:'camera-evaluation-failed',message:cameraTrace.reason});
-      }
-      checks.camera={status:cameraTrace.status,report:'camera-evaluation.json'};
-      console.log('[review] Avaliação de câmera: '+cameraTrace.status);
-    }
+    const movementTrace=await evaluateMovement(browser,started.target,bundle,stage,cameraEvaluation);
+    checks.movement={status:movementTrace.status,report:'movement-diagnostics.json'};
+    if(movementTrace.status!=='passed')issues.push({type:'movement-diagnostics-failed',
+      message:'Consulte movement-diagnostics.json para os cenários que falharam.'});
     abort.signal.throwIfAborted();
     geography.git=git;
     const browserInfo={engine:'chromium',version:browser.version(),headless:true};
@@ -309,8 +303,8 @@ async function main(){
     const json=(file,value)=>writeFile(join(bundle,file),JSON.stringify(value,null,2)+'\n');
     await Promise.all([json('metadata.json',metadata),json('performance.json',performance),json('console-errors.json',issues),json('geographic-correspondence.json',geography)]);
 
-    if(cameraTrace)await json('camera-evaluation.json',cameraTrace);
-    const cameraFiles=cameraTrace?['camera-evaluation.json',...(cameraTrace.video?[cameraTrace.video]:[])]:[];
+    await json('movement-diagnostics.json',movementTrace);
+    const movementFiles=['movement-diagnostics.json',...(movementTrace.video?[movementTrace.video]:[])];
 
     const imageFiles=[...geographicFiles.filter(file=>file.endsWith('.png')),...captures.flatMap(capture=>capture.file?[capture.file]:[])];
     const current={metadata,performance,readImage:file=>readFile(join(bundle,file))};
@@ -323,7 +317,7 @@ async function main(){
 
     // Explicit allowlist. Nothing outside this staging directory can enter the archive.
     const files=['metadata.json','performance.json','console-errors.json','geographic-correspondence.json',
-      'report.html',...cameraFiles,...standaloneFiles,...geographicFiles,...captures.flatMap(capture=>capture.file?[capture.file]:[]),...comparisonFiles];
+      'report.html',...movementFiles,...standaloneFiles,...geographicFiles,...captures.flatMap(capture=>capture.file?[capture.file]:[]),...comparisonFiles];
     if((await run('zip',['-q','-X',archive,...files],{cwd:bundle})).code!==0)
       throw new Error('Falha ao criar o ZIP.');
     if((await run('unzip',['-tq',archive],{quiet:true})).code!==0)

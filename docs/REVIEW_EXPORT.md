@@ -139,10 +139,13 @@ diferentes. Os pares incompatíveis conservam as imagens lado a lado
 para inspeção e omitem deltas de desempenho. O relatório principal
 continua usando imagens relativas depois da extração.
 
-Para incluir uma caminhada de diagnóstico da câmera no High Park, use
-`npm run review:export -- --camera-evaluation`. A avaliação usa o joystick
-e gestos de câmera em Chromium com viewport mobile emulado. O ZIP inclui
-`camera-evaluation.webm` e `camera-evaluation.json`, com posição, direção
-solicitada, referência de movimento, direção do corpo, yaw comandado e
-azimute da câmera renderizada por frame. As capturas com poses fixas
-continuam no fluxo de revisão existente.
+O export testa quatro entradas sustentadas de 10 segundos no High Park.
+D, W+D, joystick horizontal e joystick diagonal são medidos na base da
+câmera renderizada. O arquivo `movement-diagnostics.json` documenta
+input normalizado, posição, direção do corpo, yaw e velocidade projetada
+em m/s. Cada amostra deve respeitar a tolerância de 0,08 m/s.
+
+Use `npm run review:export -- --camera-evaluation` para incluir um vídeo
+do joystick com a telemetria na tela. Em uma sessão de desenvolvimento,
+`?movement-debug=1` mostra o painel temporário. A tecla C recentraliza
+a câmera no desktop. No celular, a ação fica em Ajuda.

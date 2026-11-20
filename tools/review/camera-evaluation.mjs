@@ -1,91 +1,112 @@
-import assert from 'node:assert/strict';
 import {join} from 'node:path';
 import {angleDelta} from '../../src/camera-follow.js';
 
-export async function evaluateCamera(browser,server,bundle,stage){
-  const viewport={width:390,height:844};
-  const context=await browser.newContext({viewport,isMobile:true,hasTouch:true,
-    reducedMotion:'reduce',recordVideo:{dir:stage,size:viewport}});
-  const page=await context.newPage();
-  const video=page.video(),errors=[];
+const durationMs=10000;
+const toleranceMetersPerSecond=.08;
+const scenarios=[
+  {id:'keyboard-right',keys:['d'],expected:[1,0]},
+  {id:'keyboard-diagonal',keys:['w','d'],expected:[Math.SQRT1_2,Math.SQRT1_2]},
+  {id:'joystick-right',stick:[38,0],expected:[1,0]},
+  {id:'joystick-diagonal',stick:[27,-27],expected:[Math.SQRT1_2,Math.SQRT1_2]},
+];
+
+async function evaluateScenario(browser,server,bundle,stage,scenario,record){
+  const mobile=Boolean(scenario.stick);
+  const viewport=mobile?{width:390,height:844}:{width:1280,height:720};
+  const context=await browser.newContext({viewport,isMobile:mobile,hasTouch:mobile,reducedMotion:'reduce',
+    ...(record?{recordVideo:{dir:stage,size:viewport}}:{})});
+  const page=await context.newPage(),errors=[];
   page.on('pageerror',error=>errors.push(error.message));
+  const video=page.video();
+  let samples=[];
   try{
+    const url=new URL('/?review=1',server);
+    if(record)url.searchParams.set('movement-debug','1');
     await page.route('https://fonts.googleapis.com/**',route=>route.fulfill({contentType:'text/css',body:''}));
-    await page.goto(new URL('/?review=1',server).href);
+    await page.goto(url.href);
     await page.waitForSelector('#game canvas[data-review-pose]');
-    const touch=await context.newCDPSession(page);
-    const dispatch=(type,touchPoints=[])=>touch.send('Input.dispatchTouchEvent',{type,touchPoints});
-    const joystick=await page.locator('#joystick').boundingBox();
-    const stick=(dx,dy)=>({id:1,x:joystick.x+joystick.width/2+dx,y:joystick.y+joystick.height/2+dy});
-    const direction=stick(0,-38);
-    await dispatch('touchStart',[direction]);
-    try{await page.locator('#action-btn').waitFor({timeout:6000});}
-    finally{await dispatch('touchEnd');}
-    await page.locator('#action-btn').tap();
+    const portal=page.locator('#action-btn');
+    let dispatch,stick;
+    if(mobile){
+      const touch=await context.newCDPSession(page);
+      dispatch=(type,touchPoints=[])=>touch.send('Input.dispatchTouchEvent',{type,touchPoints});
+      const box=await page.locator('#joystick').boundingBox();
+      stick=(dx,dy)=>({id:1,x:box.x+box.width/2+dx,y:box.y+box.height/2+dy});
+      await dispatch('touchStart',[stick(0,-38)]);
+      try{await portal.waitFor({timeout:6000});}
+      finally{await dispatch('touchEnd');}
+      await portal.tap();
+    }else{
+      await page.keyboard.down('w');
+      try{await portal.waitFor({timeout:6000});}
+      finally{await page.keyboard.up('w');}
+      await portal.click();
+    }
     await page.waitForFunction(()=>document.querySelector('#app').dataset.region==='high-park'
       && document.querySelector('#app').getAttribute('aria-busy')==='false');
-    assert.equal(await page.locator('[data-multiplier]').textContent(),'1×');
 
-    await page.evaluate(()=>{
-      const canvas=document.querySelector('#game canvas');
-      const trace=window.cameraTrace={phase:'idle',samples:[],active:true};
-      const start=performance.now();
-      function sample(now){
-        if(!trace.active)return;
-        const {position,orbit,movement}=JSON.parse(canvas.dataset.reviewPose);
-        trace.samples.push({ms:now-start,phase:trace.phase,position:position.local,
-          characterHeading:position.headingRadians,cameraYaw:orbit.yaw,renderedCameraYaw:orbit.renderedYaw,...movement});
-        requestAnimationFrame(sample);
-      }
-      requestAnimationFrame(sample);
-    });
-    const phase=name=>page.evaluate(name=>{window.cameraTrace.phase=name;},name);
-    const walk=async(name,dx,dy,ms)=>{
-      await phase(name);
-      await dispatch('touchStart',[stick(dx,dy)]);
-      try{await page.waitForTimeout(ms);}
-      finally{await dispatch('touchEnd');}
-      await phase('idle');
-      await page.waitForTimeout(250);
-    };
-    await walk('straight',0,-38,2600);
-    await walk('lateral',38,0,2500);
-    await walk('diagonal',-27,-27,1900);
-
-    await phase('manual');
-    const first=stick(38,0),second={id:2,x:196,y:345};
-    await dispatch('touchStart',[first,second]);
+    if(mobile)await dispatch('touchStart',[stick(...scenario.stick)]);
+    else for(const key of scenario.keys)await page.keyboard.down(key);
     try{
-      await page.waitForTimeout(200);
-      await dispatch('touchMove',[first,{...second,x:second.x+85}]);
-      await page.waitForTimeout(1100);
-      await phase('resume');
-      await page.waitForTimeout(1900);
-    }finally{await dispatch('touchEnd');}
-    await walk('reverse',0,38,1900);
-    await page.waitForTimeout(550);
-    const samples=await page.evaluate(()=>{
-      window.cameraTrace.active=false;
-      return window.cameraTrace.samples;
-    });
-
-    assert.deepEqual(errors,[]);
-    const measurements={};
-    for(const name of ['straight','lateral','diagonal','manual','resume','reverse']){
-      const moving=samples.filter(sample=>sample.phase===name&&Math.hypot(...sample.direction)>.1);
-      assert.ok(moving.length>5,'Movimento não detectado: '+name);
-      const a=moving[0],b=moving.at(-1);
-      const dx=b.position[0]-a.position[0],dz=b.position[2]-a.position[2];
-      const [x,z]=a.direction;
-      const drift=Math.abs(dx*z-dz*x)/Math.hypot(x,z);
-      const turn=Math.abs(angleDelta(a.cameraYaw,b.cameraYaw));
-      measurements[name]={distanceMeters:Math.hypot(dx,dz),crossTrackMeters:drift,cameraTurnRadians:turn};
-      if(['straight','lateral','diagonal','reverse'].includes(name))assert.ok(drift<.15,'Desvio em '+name);
-      if(name==='lateral'||name==='resume')assert.ok(turn>.25,'Giro ausente em '+name);
-      if(name==='reverse')assert.ok(turn<.01,'Giro indevido na marcha à ré');
+      await page.waitForFunction(expected=>{
+        const {movement}=JSON.parse(document.querySelector('#game canvas').dataset.reviewPose);
+        return movement.input.every((value,i)=>Math.abs(value-expected[i])<.02);
+      },scenario.expected,{timeout:5000});
+      samples=await page.evaluate(ms=>new Promise(resolve=>{
+        const canvas=document.querySelector('#game canvas');
+        const start=performance.now(),samples=[];
+        function sample(now){
+          const {movement,position}=JSON.parse(canvas.dataset.reviewPose);
+          samples.push({ms:now-start,position:position.local,...movement});
+          if(now-start>=ms)resolve(samples);
+          else requestAnimationFrame(sample);
+        }
+        requestAnimationFrame(sample);
+      }),durationMs);
+    }finally{
+      if(mobile)await dispatch('touchEnd');
+      else for(const key of scenario.keys)await page.keyboard.up(key);
     }
+
+    const first=samples[0];
+    const maxError=Math.max(...samples.flatMap(s=>s.projected.map((value,i)=>
+      Math.abs(value-scenario.expected[i]*s.commandSpeed))));
+    const maxYawChange=Math.max(...samples.map(s=>Math.abs(angleDelta(first.cameraYaw,s.cameraYaw))));
+    const valid=samples.every(s=>!s.angularFollow&&s.input.every((value,i)=>Math.abs(value-scenario.expected[i])<.02));
+    const expectedBodyYaw=first.cameraYaw+Math.atan2(-scenario.expected[0],scenario.expected[1]);
+    const bodyError=Math.abs(angleDelta(samples.at(-1).characterHeading,expectedBodyYaw));
+    let recenterPassed=true;
+    if(scenario.id==='keyboard-right'){
+      await page.keyboard.press('c');
+      try{
+        await page.waitForFunction(()=>{
+          const {movement}=JSON.parse(document.querySelector('#game canvas').dataset.reviewPose);
+          const error=movement.cameraYaw-movement.characterHeading;
+          return Math.abs(Math.atan2(Math.sin(error),Math.cos(error)))<.02;
+        },null,{timeout:2500});
+      }catch{recenterPassed=false;}
+    }
+    const status=valid&&maxError<=toleranceMetersPerSecond&&maxYawChange<.005
+      &&bodyError<.02&&recenterPassed&&!errors.length?'passed':'failed';
     await context.close();
-    await video.saveAs(join(bundle,'camera-evaluation.webm'));
-    return {status:'passed',viewport,speedMultiplier:1,measurements,samples,video:'camera-evaluation.webm'};
+    if(video)await video.saveAs(join(bundle,'movement-diagnostics.webm'));
+    return {...scenario,viewport,status,maxError,maxYawChange,bodyError,recenterPassed,samples,errors};
   }finally{await context.close();}
+}
+
+export async function evaluateMovement(browser,server,bundle,stage,record=false){
+  const results=[];
+  for(const scenario of scenarios){
+    try{
+      const result=await evaluateScenario(browser,server,bundle,stage,scenario,record&&scenario.id==='joystick-right');
+      results.push(result);
+      console.log('[review] Movimento '+scenario.id+': '+result.status);
+    }catch(error){
+      results.push({id:scenario.id,status:'failed',error:error.message});
+    }
+  }
+  const status=results.every(s=>s.status==='passed')?'passed':'failed';
+  const recorded=record&&results.some(s=>s.id==='joystick-right'&&s.samples?.length);
+  return {status,durationMs,toleranceMetersPerSecond,scenarios:results,
+    ...(recorded?{video:'movement-diagnostics.webm'}:{})};
 }

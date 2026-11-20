@@ -3,17 +3,29 @@ import {nearSegment, pointInPolygon} from './geo.js';
 export const PLAYER_RADIUS = .35;
 export const finitePoint = point => Array.isArray(point) && point.length >= 2 && point.every(Number.isFinite);
 
-// Input axes: right and forward. World axes: east (+x), south (+z).
-export function movementDelta(right, forward, yaw, speed, dt) {
-  if (![right, forward, yaw, speed, dt].every(Number.isFinite) || dt <= 0 || speed < 0) return [0, 0];
-  const magnitude = Math.hypot(right, forward);
-  if (!magnitude) return [0, 0];
-  const distance = Math.min(1, magnitude) * speed * Math.min(dt, .05);
-  right /= magnitude;
-  forward /= magnitude;
-  const result = [(right * Math.cos(yaw) - forward * Math.sin(yaw)) * distance,
-    (-right * Math.sin(yaw) - forward * Math.cos(yaw)) * distance];
-  return finitePoint(result) ? result : [0, 0];
+// X is east, Z is south. The horizontal camera basis stays orthonormal.
+export function cameraBasis(yaw){
+  const sin=Math.sin(yaw),cos=Math.cos(yaw);
+  return {cameraRight:[cos,-sin],cameraForward:[-sin,-cos]};
+}
+
+export function normalizeMoveInput(right,forward){
+  const magnitude=Math.max(1,Math.hypot(right,forward));
+  return [right/magnitude,forward/magnitude];
+}
+
+export function projectCameraMovement([x,z],yaw){
+  const {cameraRight,cameraForward}=cameraBasis(yaw);
+  return [x*cameraRight[0]+z*cameraRight[1],x*cameraForward[0]+z*cameraForward[1]];
+}
+
+export function movementDelta(right,forward,yaw,speed,dt) {
+  if (![right,forward,yaw,speed,dt].every(Number.isFinite) || dt <= 0 || speed <= 0 || (!right && !forward)) return [0, 0];
+  const [x,y]=normalizeMoveInput(right,forward);
+  const {cameraRight,cameraForward}=cameraBasis(yaw);
+  const distance=speed*Math.min(dt,.05);
+  const result=cameraRight.map((value,i)=>(x*value+y*cameraForward[i])*distance);
+  return finitePoint(result) ? result : [0,0];
 }
 
 export function overlapsPolygon(point, polygon, radius) {
