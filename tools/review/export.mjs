@@ -1,3 +1,4 @@
+import {evaluateCherryHill} from './cherry-hill.mjs';
 import {evaluateWorldStreaming} from './world-streaming.mjs';
 import {entranceComparison,entranceComparisonHtml,recordEntranceWalk} from './entrance-art.mjs';
 import {evaluateTerrainGameplay} from './terrain-gameplay.mjs';
@@ -107,7 +108,7 @@ const safeMessage=message=>String(message)
   .replace(/(bearer\s+|(?:token|password|secret|api[_-]?key)\s*[:=]\s*)[^\s,;]+/gi,'$1[redacted]')
   .slice(0,1200);
 
-async function collectProfile(browser,target,dir,profileId,expanded=false,legacyEntrance=false){
+async function collectProfile(browser,target,dir,profileId,expanded=false,legacyEntrance=false,legacyCherry=false){
   const profile=reviewProfiles[profileId];
   const page=await browser.newPage({viewport:profile.viewport,deviceScaleFactor:profile.deviceScaleFactor,
     isMobile:profile.mobileViewportSimulation,hasTouch:profile.mobileViewportSimulation,
@@ -116,9 +117,10 @@ async function collectProfile(browser,target,dir,profileId,expanded=false,legacy
   url.searchParams.set('profile',profileId);
   if(expanded)url.searchParams.set('park','expanded');
   if(legacyEntrance)url.searchParams.set('entrance','legacy');
+  if(legacyCherry)url.searchParams.set('cherry','legacy');
   const origin=url.origin;
   const issues=[],captures=[],metrics=[];
-  const selected=points.filter(point=>(point.profile??'desktop')===profileId&&Boolean(point.expanded)===expanded&&Boolean(point.legacyEntrance)===legacyEntrance);
+  const selected=points.filter(point=>(point.profile??'desktop')===profileId&&Boolean(point.expanded)===expanded&&Boolean(point.legacyEntrance)===legacyEntrance&&Boolean(point.legacyCherry)===legacyCherry);
   let geography={status:'unavailable'},motion=null;
   const geographicFiles=[];
   let current=null;
@@ -183,7 +185,7 @@ async function collectProfile(browser,target,dir,profileId,expanded=false,legacy
         console.error('[review] falha em '+point.id+' · '+reason);
       }
     }
-    if(profileId==='desktop'&&expanded&&!legacyEntrance)geography=await page.evaluate(()=>window.gameLoveReview.expandedTerrain());
+    if(profileId==='desktop'&&expanded&&!legacyEntrance&&!legacyCherry)geography=await page.evaluate(()=>window.gameLoveReview.expandedTerrain());
     if(profileId==='desktop'&&!expanded){
       current='motion-high-park';
       try{
@@ -284,7 +286,8 @@ async function main(){
     const terrainDesktop=await collectProfile(browser,started.target,bundle,'desktop',true);
     profiles.push(terrainDesktop,await collectProfile(browser,started.target,bundle,'mobile',true),
       await collectProfile(browser,started.target,bundle,'desktop',true,true),
-      await collectProfile(browser,started.target,bundle,'mobile',true,true));
+      await collectProfile(browser,started.target,bundle,'mobile',true,true),
+      await collectProfile(browser,started.target,bundle,'desktop',true,false,true));
     const terrainReport=terrainDesktop.geography;
     const terrainFiles=['geography/high-park-expanded.osm-source.json.gz','geography/high-park-hrdem.tif'];
     await mkdir(join(bundle,'geography'),{recursive:true});
@@ -332,6 +335,9 @@ async function main(){
     if(streaming.status!=='passed')issues.push({type:'world-streaming-failed',message:'Consulte world-streaming.json.'});
     for(const failure of streaming.network.expectedNetworkFailures??[])
       issues.push({type:'streaming-network-simulation',...failure,expected:true});
+    const cherry=await evaluateCherryHill(browser,started.target,bundle,safeMessage);
+    checks.cherryHill={status:cherry.status,report:'cherry-hill.json'};
+    if(cherry.status!=='passed')issues.push({type:'cherry-hill-failed',message:cherry.error});
     const movementTrace=await evaluateMovement(browser,started.target,bundle,cameraEvaluation,Number(videoFps));
     checks.movement={status:movementTrace.status,report:'movement-diagnostics.json'};
     if(movementTrace.status!=='passed')issues.push({type:'movement-diagnostics-failed',
@@ -377,6 +383,7 @@ async function main(){
     await json('north-entrance-art.json',{status:entranceStatus,pairs:matchedEntrance,walk:entranceWalk,photo});
     await json('high-park-terrain-review.json',terrainReport);
     await json('world-streaming.json',streaming);
+    await json('cherry-hill.json',cherry);
     await json('memory-gameplay.json',memoryGameplay);
     await json('movement-diagnostics.json',movementTrace);
     await json('automatic-camera-diagnostics.json',automaticCamera);
@@ -394,7 +401,7 @@ async function main(){
 
     // Explicit allowlist. Nothing outside this staging directory can enter the archive.
     const files=['metadata.json','performance.json','console-errors.json','geographic-correspondence.json',
-      'report.html','world-streaming.json',...streaming.videos,...entranceFiles,'high-park-terrain-review.json',...terrainFiles,'memory-gameplay.json',...movementFiles,...standaloneFiles,...geographicFiles,...captures.flatMap(capture=>capture.file?[capture.file]:[]),...comparisonFiles];
+      'report.html','cherry-hill.json',...(cherry.video?[cherry.video]:[]),'world-streaming.json',...streaming.videos,...entranceFiles,'high-park-terrain-review.json',...terrainFiles,'memory-gameplay.json',...movementFiles,...standaloneFiles,...geographicFiles,...captures.flatMap(capture=>capture.file?[capture.file]:[]),...comparisonFiles];
     if((await run('zip',['-q','-X',archive,...files],{cwd:bundle})).code!==0)
       throw new Error('Falha ao criar o ZIP.');
     if((await run('unzip',['-tq',archive],{quiet:true})).code!==0)

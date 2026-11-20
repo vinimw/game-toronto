@@ -88,7 +88,8 @@ async function prepare(id){
     sceneLoadMs=performance.now()-start;
   }
   const active=manager.active;
-  await active.stats.streaming?.prime();
+  active.stats.setQuality(quality);
+  await active.stats.streaming?.prime({cherry:Boolean(point.cherry||point.id==='40-expanded-cherry-hill')});
   const world=active.world,origin=world.mode==='osm'?'OSM REAL':'DEMO';
   const [minX,minZ,maxX,maxZ]=world.bbox;
   const geographicBounds=origin==='OSM REAL'&&world.origin?{

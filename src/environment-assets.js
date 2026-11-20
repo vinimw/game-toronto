@@ -41,9 +41,11 @@ const assets=new AssetManager({
   },
 });
 
-export const acquireEntranceGate=()=>assets.acquire('north-gate.glb');
+export const acquireEnvironmentAsset=key=>assets.acquire(key);
+export const acquireEntranceGate=()=>acquireEnvironmentAsset('north-gate.glb');
 
-export const entranceAssetStats=()=>assets.stats();
+export const entranceAssetStats=()=>assets.stats(key=>entranceDependencies.includes(key));
+export const cherryAssetStats=()=>assets.stats(key=>key.startsWith('sakura-'));
 
 export async function loadEntranceAssets(signal){
   const leases=entranceDependencies.map(key=>[key,assets.acquire(key)]);

@@ -85,3 +85,19 @@ points.push(
 );
 points.push({...points.find(point=>point.id==='51-north-entrance-mobile'),
   id:'53-north-entrance-mobile-before',label:'Entrada norte · mobile anterior',legacyEntrance:true});
+
+const cherryView=(id,label,local,eye,look,profile='desktop')=>({
+  ...terrainView(id,label,local,871510614,eye,look,profile),cherry:true,
+});
+const cherryArrival=cherryView('56-cherry-arrival','Hatchling Hill · chegada pela trilha',
+  [-192,746],[14,3.6,-15],[-7,2,25]);
+points.push(
+  cherryArrival,
+  cherryView('57-cherry-under-canopy','Hatchling Hill · sob as copas',[-201,773],[1,2.7,-7],[0,2.4,12]),
+  cherryView('58-cherry-branches','Hatchling Hill · ramos e flores',[-202,809],[-1,3.1,-4],[-6,5,4]),
+  cherryView('59-cherry-light','Hatchling Hill · luz entre as copas',[-200,796],[-9,4,1],[11,5,3]),
+  cherryView('60-cherry-petals','Hatchling Hill · pétalas junto à trilha',[-201,763],[-2,1.2,-4],[0,.2,8]),
+  cherryView('61-cherry-slope','Hatchling Hill · encosta voltada ao lago',[-198,770],[43,32,-29],[-59,0,49]),
+  cherryView('62-cherry-mobile','Hatchling Hill · Balanced mobile',[-201,784],[0,2.9,-8],[-1,3,12],'mobile'),
+  {...cherryArrival,id:'63-cherry-before',label:'Hatchling Hill · chegada antes do landmark',legacyCherry:true},
+);

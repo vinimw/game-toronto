@@ -8,6 +8,7 @@ const approved=new Set([
   ...['asphalt_track','concrete_pavement','stone_wall','grass_medium_01']
     .flatMap(name=>['Diffuse','nor_gl','arm'].map(kind=>'assets/north-entrance/'+name+'-'+kind+'.jpg')),
   'assets/north-entrance/north-gate.glb',
+  'assets/north-entrance/sakura-19-low.glb','assets/north-entrance/sakura-61-low.glb',
   ...['maple-43','maple-79','oak-31','oak-67','sakura-19','sakura-61']
     .flatMap(name=>['high','balanced'].map(lod=>'assets/north-entrance/'+name+'-'+lod+'.glb')),
 ]);

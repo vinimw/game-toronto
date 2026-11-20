@@ -119,6 +119,7 @@ export function buildWorld(scene,world,portals=[],evidence){
   }:undefined;
   function setQuality(profile){
     quality=profile;
+    streaming?.setQuality(profile);
     vegetation.setQuality(profile);
     entrance?.setQuality(profile);
     for(const {definition,model} of landmarks)

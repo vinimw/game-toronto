@@ -5,6 +5,10 @@ import {terrainBuildingBatches} from './terrain-buildings.js';
 import {entranceArtBounds,entranceGate,installEntranceArt} from './north-entrance-art.js';
 import {collectResources,disposeScene} from './scene-resources.js';
 import {entranceDependencies} from './north-entrance-asset-manifest.js';
+import {resolveMemoryPoints} from './memories.js';
+import {createWalkTest} from './movement.js';
+import {cherryHill} from './cherry-hill-manifest.js';
+import {buildCherryArt,cherryPlacements} from './cherry-hill-art.js';
 import {WorldStreaming} from './world-streaming.js';
 
 const pilot=[-225,-201,225,170];
@@ -104,6 +108,51 @@ export function highParkStreaming(scene,world,sun,style,paths,activateEntrance,b
       },
     });
   }
+  const cherryEnabled=world.cherryEnabled!==false;
+  const cherryLayers=new Map();
+  const memoryAnchor=cherryEnabled?resolveMemoryPoints('high-park',world,
+    createWalkTest(world.features,world.bbox),[cherryHill.memory])[0]?.position:null;
+  let cherryStats=()=>null,trees,quality='high';
+  const cherryLod=()=>cherryLayers.has(quality)?quality:cherryLayers.has('low')?'low':null;
+  const showCherryLod=()=>{
+    const selected=cherryLod();
+    for(const [lod,art] of cherryLayers)art.root.visible=lod===selected;
+  };
+  if(cherryEnabled)for(const lod of cherryHill.lods){
+    const dependencies=cherryHill.models.map(model=>model+'-'+lod+'.glb');
+    manifests.push({
+      id:cherryHill.id+':'+lod,bounds:cherryHill.bounds,
+      loadRadius:lod==='low'?108:63,keepRadius:lod==='low'?190:125,
+      lane:lod==='low'?'cherry-low':'cherry-detail',bias:-90,lods:[lod],
+      assets:{directory:assetUrl('assets/north-entrance/'),shared:dependencies},
+      hasDetail:()=>lod==='low'||lod===quality,
+      async load(signal,frame){
+        const module=await import('./environment-assets.js');
+        cherryStats=module.cherryAssetStats;
+        signal.throwIfAborted();
+        const leases=dependencies.map(key=>module.acquireEnvironmentAsset(key));
+        const release=()=>{for(const lease of leases)lease.release();};
+        signal.addEventListener('abort',release,{once:true});
+        try{
+          const requestStart=performance.now();
+          const models=await Promise.all(leases.map(lease=>lease.ready));
+          const assetPreparationMs=performance.now()-requestStart;
+          await frame();
+          signal.throwIfAborted();
+          const start=performance.now();
+          trees??=cherryPlacements(world);
+          const art=buildCherryArt(world,trees,models,lod);
+          return {
+            mount(){cherryLayers.set(lod,art);scene.add(art.root);showCherryLod();},
+            buildMs:performance.now()-start,assetPreparationMs,
+            estimatedGeometryBytes:estimatedGeometry(art.root),
+            dispose(){cherryLayers.delete(lod);art.dispose();showCherryLod();release();},
+          };
+        }catch(error){release();throw error;}
+        finally{signal.removeEventListener('abort',release);}
+      },
+    });
+  }
   const stream=new WorldStreaming(manifests);
   return {
     add(...data){
@@ -117,11 +166,21 @@ export function highParkStreaming(scene,world,sun,style,paths,activateEntrance,b
     update:(position,velocity,look,view)=>{renderer=view.renderer;stream.update(position,velocity,look,view);},
     landmarkBounds:()=>gateBounds,
     landmarkState:()=>entranceArt?'detailed':fallback?'structure':'pending',
-    prime:()=>stream.prime(),
+    setQuality(next){
+      if(next===quality)return;
+      quality=next;
+      for(const sector of stream.sectors)
+        if(sector.id.startsWith(cherryHill.id+':')&&!sector.hasDetail())stream.evict(sector);
+      showCherryLod();
+    },
+    prime:({cherry=false}={})=>stream.prime(sector=>cherry===sector.id.startsWith(cherryHill.id+':')),
     dispose(){disposed=true;stream.dispose();fallback?.removeFromParent();gateLease?.release();},
     stats:()=>{
       const sectors=stream.stats();
-      return {landmarkState:entranceArt?'detailed':fallback?'structure':'pending',sectors,assets:assetStats(),
+      return {cherryHill:{futureMemoryPosition:memoryAnchor,lod:cherryLod(),trees:trees?.length??0,assets:cherryStats(),
+        estimatedTextureBytes:cherryLod()?estimatedTextures(cherryLayers.get(cherryLod()).root,{shadow:{}}):0},
+        landmarkState:entranceArt?'detailed':fallback?'structure':'pending',sectors,assets:assetStats(),
+        firstPresentationCount:sectors.reduce((total,s)=>total+s.firstPresentationCount,0),
         lateActivationCount:sectors.reduce((total,s)=>total+s.lateActivationCount,0),
         visiblePopInCount:sectors.reduce((total,s)=>total+s.visiblePopInCount,0),
         estimatedTextureAndShadowBytes:entranceArt?estimatedTextures(entranceArt.root,sun):0};
