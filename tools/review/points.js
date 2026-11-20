@@ -134,3 +134,13 @@ for(const [n,label,eye,look,profile] of [
   points.push({...terrainView(n+'-maple-garden','Maple Leaf Garden · '+label,[-127.43,1025.98],125699405,eye,look,profile),
     maple:true,...(n===74?{projection:'orthographic',mapleTop:true}:{})});
 }
+
+const mapleSpringViews=[
+  [82,'vista da encosta a leste',[-44,1008],[0,1.65,0],[-95,.1,14],125699405],
+  [83,'tulipas no início da floração',[-145,1011],[0,1.15,4],[7,.24,8],125699385],
+  [84,'círculo à altura do jogador',[-127.43,1025.98],[0,1.65,0],[-11,.3,-4],125699405],
+  [85,'piso claro, gramado e cerca viva',[-127.43,1025.98],[18,47,-12],[-13,0,-5],125699405],
+  [86,'Balanced com setor ativo',[-127.43,1025.98],[3,3,0],[-11,.3,-4],125699405,'mobile'],
+];
+for(const [n,label,local,eye,look,way,profile] of mapleSpringViews)
+  points.push({...terrainView(n+'-maple-spring','Maple Leaf Garden · '+label,local,way,eye,look,profile),maple:true});

@@ -152,8 +152,11 @@ async function prepare(id){
     attribution.textContent=(camera.isOrthographicCamera?'↑ N · ':'')+point.label+(world.terrain?' · PRÉVIA OSM + HRDEM':' · OSM REAL')+' · © OpenStreetMap contributors';
     document.body.append(attribution);
   }
+  const maple=point.maple?active.stats.streaming?.stats().mapleGarden:null;
+  if(point.maple&&(!maple||maple.state!=='active'||maple.lod!==quality||maple.coverage!==1))
+    throw new Error('O detalhe do jardim não terminou de carregar.');
   const direction=new THREE.Vector3();camera.getWorldDirection(direction);
-  return {status:'captured',...sceneInfo,label:point.label,
+  return {status:'captured',...sceneInfo,label:point.label,...(maple?{mapleDetail:maple}:{}),
     fileStem:origin==='OSM REAL'?point.osmFile??point.id:point.id,
     position:{local:avatar.root.position.toArray(),geographic:origin==='OSM REAL'?geographicPosition(position,world.origin):null,headingRadians:point.heading},
     camera:{projection:camera.type,position:camera.position.toArray(),direction:direction.toArray(),

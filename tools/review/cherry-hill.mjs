@@ -67,6 +67,7 @@ export async function evaluateCherryHill(browser,target,bundle,safeMessage,{pond
       document.body.append(overlay);
       window.cherryVideoStart=performance.now();
     });
+    if(maple)await page.locator('#speed-panel [data-toggle][aria-expanded="true"]').click();
     recording=await startViewportVideo(page,viewport,12,{touchControls:false});
     const legs=[];
     async function walk(label,yaw,destination,multiplier){

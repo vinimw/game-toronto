@@ -393,8 +393,9 @@ async function main(){
       reproducibility:{animationTimeSeconds:0,lighting:'Iluminação fixa da cena, sem relógio de dia.',
         proceduralSeedPolicy:'Sementes fixas definidas no gerador versionado pelo commit Git.'},
       viewport,resolution:viewport,captures,geographicEvidence:geographicFiles,entranceComparison:'north-entrance-comparison.html',
-      video:pond.video?{status:pond.status==='passed'?'validated':'failed',files:[pond.video,...videos],
+      video:pond.video?{status:pond.status==='passed'?'validated':'failed',files:[pond.video,...(maple.video?[maple.video]:[]),...videos],
         artifacts:[{file:pond.video,status:pond.status,encodingFps:pond.playback?.fps,diagnostic:'grenadier-pond.json'},
+          ...(maple.video?[{file:maple.video,status:maple.status,encodingFps:maple.playback?.fps,diagnostic:'maple-garden.json'}]:[]),
           ...(cherry.video?[{file:cherry.video,status:cherry.status,encodingFps:cherry.playback?.fps,diagnostic:'cherry-hill.json'}]:[]),
           ...streaming.videos.map(file=>({file,status:streaming.status,diagnostic:'world-streaming.json'})),
           ...videos.map(file=>({file,encodingFps:Number(videoFps)}))]}:cameraEvaluation?{status:movementTrace.status==='passed'&&automaticCamera.status==='passed'&&coupledPrototype.status==='passed'&&coupledCamera.status==='passed'?'validated':'failed',files:videos,encodingFps:Number(videoFps)}
