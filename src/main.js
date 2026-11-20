@@ -273,7 +273,7 @@ function animate(now){
       projected,commandSpeed:player.configuredSpeed(running),angularFollow:false,recentering:recentering.target!==null,cameraFollowMode:recentering.mode};
     if(debugPanel){
       const format=vector=>vector.map(value=>value.toFixed(2)).join(' / ');
-      debugPanel.textContent=`${flags.get('movement-scenario')??'Diagnóstico de movimento'}
+      debugPanel.textContent=`${document.documentElement.dataset.movementStage??flags.get('movement-scenario')??'Diagnóstico de movimento'}
 Entrada X/Y  ${format(diagnostics.input)}
 Yaw câmera   ${cameraYaw.toFixed(2)} rad
 Corpo        ${diagnostics.characterHeading.toFixed(2)} rad

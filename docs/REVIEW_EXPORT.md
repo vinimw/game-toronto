@@ -157,3 +157,15 @@ de W+D para W, a liberação do joystick e a posição durante a
 recentralização. O botão de câmera no cabeçalho mobile equivale a C.
 Em Ajuda, alterne entre Estável e Assistido. O Assistido recentraliza
 uma vez após um movimento lateral seguido de repouso.
+
+Na v3.2, a gravação usa screenshots JPEG do viewport completo em 390 ×
+844, codificados em WebM. O export confere as dimensões do viewport
+visual, do canvas e dos controles. Depois decodifica três quadros
+por vídeo e compara a faixa inferior com os screenshots de origem.
+O FFmpeg instalado pelo Playwright é usado por padrão. A variável
+`REVIEW_FFMPEG` permite indicar outro executável compatível.
+
+O clipe `movement-diagnostics.webm` inclui a sequência numerada do
+movimento lateral até a diagonal com giro manual. O JSON registra
+a liberação dos controles, o fim do movimento, o acionamento, o alvo,
+os quadros da interpolação e o término ou interrupção da recentralização.

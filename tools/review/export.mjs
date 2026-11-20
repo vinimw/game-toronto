@@ -276,7 +276,7 @@ async function main(){
       .sort((a,b)=>a.id.localeCompare(b.id));
     const issues=[...profiles.flatMap(result=>result.issues),...gameplay.issues];
     const metrics=profiles.flatMap(result=>result.metrics);
-    const movementTrace=await evaluateMovement(browser,started.target,bundle,stage,cameraEvaluation);
+    const movementTrace=await evaluateMovement(browser,started.target,bundle,cameraEvaluation);
     checks.movement={status:movementTrace.status,report:'movement-diagnostics.json'};
     if(movementTrace.status!=='passed')issues.push({type:'movement-diagnostics-failed',
       message:'Consulte movement-diagnostics.json para os cenários que falharam.'});
@@ -296,7 +296,9 @@ async function main(){
       ...(prior?{baseline:baselineIdentity(prior)}:{}),
       reproducibility:{animationTimeSeconds:0,lighting:'Iluminação fixa da cena, sem relógio de dia.',
         proceduralSeedPolicy:'Sementes fixas definidas no gerador versionado pelo commit Git.'},
-      viewport,resolution:viewport,captures,geographicEvidence:geographicFiles,video:{status:'not-generated',reason:'MP4 opcional por inclusão manual.'}};
+      viewport,resolution:viewport,captures,geographicEvidence:geographicFiles,
+      video:cameraEvaluation?{status:movementTrace.status==='passed'?'validated':'failed',files:movementTrace.videos}
+        :{status:'not-generated',reason:'Use --camera-evaluation para gravar os clipes.'}};
     const performance={schemaVersion:2,runtime,environment:'Navegador automatizado. Os resultados não equivalem ao desempenho em dispositivos móveis reais.',
       method:'Intervalo bruto entre requestAnimationFrame. 15 intervalos de aquecimento e 75 amostras por vista estática.',
       captures:metrics,motion:motion?{...motion,runtime}:null};

@@ -73,3 +73,21 @@ test('baseline identity comes from the exact archived metadata and duplicate IDs
     await assert.rejects(buildComparison(review([capture,capture],10),previous),/duplicado/);
   }finally{await rm(dir,{recursive:true,force:true});}
 });
+
+test('diagnostic distinguishes the short arc across ±180° from reversals and records interruption',async()=>{
+  const {summarizeRecentering}=await import('../tools/review/camera-evaluation.mjs');
+  const rad=degrees=>degrees*Math.PI/180;
+  const frame=(ms,yaw,active)=>({ms,yaw:rad(yaw),active,moving:false});
+  const timeline={inputReleasedMs:80,interruptedMs:160,requests:[
+    {ms:100,kind:'complete',initialYaw:rad(179),targetYaw:rad(-179)},
+    {ms:150,kind:'interrupt',initialYaw:rad(-179),targetYaw:rad(-175)},
+  ],frames:[frame(85,179,false),frame(110,179.6,true),frame(120,-179.8,true),
+    frame(130,-179,false),frame(155,-178.7,true),frame(165,-179.9,false)]};
+  const result=summarizeRecentering(timeline);
+  assert.equal(result.movementEndedMs,85);
+  assert.deepEqual(result.attempts.map(a=>[a.outcome,a.shortestArc]),[['completed',true],['interrupted',true]]);
+  assert.equal(result.attempts[0].completedMs,130);
+  assert.equal(result.attempts[1].interruptedMs,160);
+  timeline.frames[2].yaw=rad(179.3);
+  assert.equal(summarizeRecentering(timeline).attempts[0].shortestArc,false);
+});
