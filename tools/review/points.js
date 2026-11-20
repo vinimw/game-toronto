@@ -101,3 +101,17 @@ points.push(
   cherryView('62-cherry-mobile','Hatchling Hill · Balanced mobile',[-201,784],[0,2.9,-8],[-1,3,12],'mobile'),
   {...cherryArrival,id:'63-cherry-before',label:'Hatchling Hill · chegada antes do landmark',legacyCherry:true},
 );
+
+for(const [id,label,local,eye,look,profile] of [
+  ['64','perspectiva pedestre',[-205,828],[-48,4,4],[-110,0,50]],
+  ['65','panorama',[-205,828],[-38,16,4],[-150,-9,60]],
+  ['66','margem naturalizada',[-205,828],[-77,-6,25],[-114,-8,44]],
+  ['67','ondulação e reflexos',[-205,828],[-95,-9,51],[-144,-9,72]],
+  ['68','transição da trilha à margem',[-205,828],[-5,4,-6],[-111,-8,36]],
+  ['69','encosta',[-201,774],[30,22,-14],[-122,-9,75]],
+  ['70','vista pelas cerejeiras',[-201,796],[16,3,-5],[-116,-8,57]],
+  ['71','vista aérea',[-205,828],[-178,332,-160],[-190,-10,150]],
+  ['72','Balanced mobile',[-205,828],[-58,7,14],[-130,-8,48],'mobile'],
+]){
+  points.push({...cherryView(id+'-grenadier-pond','Grenadier Pond · '+label,local,eye,look,profile),pond:true});
+}

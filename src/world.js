@@ -1,3 +1,4 @@
+import {pondId,pondWater} from './grenadier-pond.js';
 import {hillSurface,cherrySky} from './cherry-hill-surfaces.js';
 import {cherryHill} from './cherry-hill-manifest.js';
 import {resolveMemoryPoints} from './memories.js';
@@ -72,10 +73,11 @@ export function buildWorld(scene,world,portals=[],evidence){
     }
   }
   const pathLayers=[];
+  let pond;
   waters.forEach(feature=>{
     const mesh=flat(feature.points,terrain?.waterLevel(feature.points)??.02,style.water);
-    if(hill&&feature.osmId===174225267){
-      const base=mesh.material;mesh.material=hillSurface(base,'water');base.dispose();
+    if(terrain&&feature.osmId===pondId){
+      const base=mesh.material;pond=pondWater(base);mesh.material=pond.material;base.dispose();
     }
     scene.add(mesh);
     evidence?.polygon(feature,mesh);
@@ -83,6 +85,8 @@ export function buildWorld(scene,world,portals=[],evidence){
   const routeMeshes=terrain?paths.map(feature=>({...feature,points:densify(feature.points)})):paths;
   addPathBatches(scene,routeMeshes,style,pathWidth,texture,evidence?.strip,real,terrain,world.entranceEnabled?((geometry,color)=>pathLayers.push([geometry,color])):null,
     hill?((feature,base)=>feature.osmId===cherryHill.trailId&&(base?hillSurface(base,'path'):true)):null);
+  let vegetation,cameraOccluders=new Set();
+  const activeSakuraArts=new Set();
   const furniture=[],cameraObstacles=[],clearings=[];
   const landmarks=[],buildingBatches=terrain?terrainBuildingBatches(scene):null;
   const streaming=terrain?highParkStreaming(scene,world,sun,style,pathLayers,art=>{
@@ -97,6 +101,13 @@ export function buildWorld(scene,world,portals=[],evidence){
     const model=makeBuilding(feature,index);
     model.position.y=floor;
     return model;
+  },{
+    getSeasonalTreePlacements:()=>vegetation?.seasonalTreePlacements??[],
+    setSeasonalFallbackVisible:visible=>vegetation?.setSeasonalFallbackVisible?.(visible),
+    onSakuraArt:(art,active)=>{
+      if(active){activeSakuraArts.add(art);art.setOccluders(cameraOccluders);}
+      else activeSakuraArts.delete(art);
+    },
   }):null;
   buildings.forEach((feature,index)=>{
     const definition=findLandmark(world,feature);
@@ -130,10 +141,14 @@ export function buildWorld(scene,world,portals=[],evidence){
   const canWalk=createWalkTest(collisionFeatures,world.bbox||[-1000,-1000,1000,1000]);
   for(const {model} of landmarks)model.decorate?.({canWalk,paths});
   if(furniture.length&&!real)clearings.push([60,114.5,10]);
-  const vegetation=world.vegetation===false?{trees:0,cameraVolumes:[],setQuality(){}}:
+  vegetation=world.vegetation===false?{trees:0,cameraVolumes:[],setQuality(){}}:
     plantPark(scene,world,portals,(point,radius)=>!canWalk(point[0],point[1],radius),clearings,environment);
   const {trees,cameraVolumes,vegetationMetrics}=vegetation;
-  const setCameraOccluders=ids=>{vegetation.setCameraOccluders?.(ids);entrance?.setOccluders(ids);};
+  const setCameraOccluders=ids=>{
+    cameraOccluders=new Set(ids);
+    vegetation.setCameraOccluders?.(cameraOccluders);entrance?.setOccluders(cameraOccluders);
+    for(const art of activeSakuraArts)art.setOccluders(cameraOccluders);
+  };
   const setDetailFocus=real?(x,z)=>{
     detailFocus=[x,z];
     if(hill){
@@ -153,6 +168,7 @@ export function buildWorld(scene,world,portals=[],evidence){
   }:undefined;
   function setQuality(profile){
     quality=profile;
+    pond?.setQuality(profile);
     streaming?.setQuality(profile);
     vegetation.setQuality(profile);
     entrance?.setQuality(profile);
@@ -161,7 +177,8 @@ export function buildWorld(scene,world,portals=[],evidence){
   }
   const regionId=scene.name.startsWith('region:')?scene.name.slice('region:'.length):null;
   const memoryPoints=resolveMemoryPoints(regionId,world,canWalk);
-  const animateMemoryMarkers=addMemoryMarkers(scene,memoryPoints,terrain);
+  const animateMarkers=addMemoryMarkers(scene,memoryPoints,terrain);
+  const animateMemoryMarkers=clock=>{animateMarkers(clock);pond?.update(clock);};
   for(const portal of world.mode==='osm'?[]:portals){
     const gate=new THREE.Group();gate.name=portal.id;gate.position.set(portal.position[0],0,portal.position[1]);
     const gateMaterial=material(0x85664c);

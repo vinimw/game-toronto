@@ -9,6 +9,8 @@ import {resolveMemoryPoints} from './memories.js';
 import {createWalkTest} from './movement.js';
 import {cherryHill} from './cherry-hill-manifest.js';
 import {buildCherryArt,cherryPlacements} from './cherry-hill-art.js';
+import {parkEnvironment,grovePosition} from './park-environment.js';
+import {buildPondShore,pondBounds,pondDetailId,pondId} from './grenadier-pond.js';
 import {WorldStreaming} from './world-streaming.js';
 
 const pilot=[-225,-201,225,170];
@@ -34,7 +36,12 @@ function estimatedTextures(root,sun){
   return Math.round(textureBytes+(shadow?shadow.width*shadow.height*8:0));
 }
 
-export function highParkStreaming(scene,world,sun,style,paths,activateEntrance,buildBuilding){
+export function highParkStreaming(scene,world,sun,style,paths,activateEntrance,buildBuilding,options={}){
+  const {
+    getSeasonalTreePlacements=()=>[],
+    setSeasonalFallbackVisible=()=>{},
+    onSakuraArt=()=>{},
+  }=options;
   const sectors=terrainSectors(world.terrain).filter(sector=>intersects(sector.bounds,pilot));
   const buildings=new Map(sectors.map(sector=>[sector.id,[]]));
   const manifests=sectors.map(sector=>({
@@ -110,6 +117,7 @@ export function highParkStreaming(scene,world,sun,style,paths,activateEntrance,b
   }
   const cherryEnabled=world.cherryEnabled!==false;
   const cherryLayers=new Map();
+  const seasonalLayers=new Map();
   const memoryAnchor=cherryEnabled?resolveMemoryPoints('high-park',world,
     createWalkTest(world.features,world.bbox),[cherryHill.memory])[0]?.position:null;
   let cherryStats=()=>null,trees,quality='high';
@@ -133,6 +141,71 @@ export function highParkStreaming(scene,world,sun,style,paths,activateEntrance,b
       art.setCoverage(weight);
     }
   };
+  const seasonalGrove=parkEnvironment(world).grove;
+  const seasonalCenter=seasonalGrove?grovePosition(world,seasonalGrove):null;
+  const seasonalBounds=seasonalCenter?(()=>{
+    const xs=seasonalGrove.trees.map(([dx])=>seasonalCenter[0]+dx),zs=seasonalGrove.trees.map(([,dz])=>seasonalCenter[1]+dz);
+    return [Math.min(...xs)-8,Math.min(...zs)-8,Math.max(...xs)+8,Math.max(...zs)+8];
+  })():null;
+  let seasonalBlend=0,seasonalLowCoverage=0,lastSeasonalBlendTime;
+  const seasonalEffectiveCoverage=()=>Math.max(seasonalBlend,seasonalLowCoverage*(1-seasonalBlend));
+  const showSeasonalLod=()=>{
+    if(!seasonalLayers.has(quality))seasonalBlend=0;
+    if(!seasonalLayers.has('low'))seasonalLowCoverage=0;
+    for(const [lod,art] of seasonalLayers){
+      const weight=lod==='low'?(1-seasonalBlend)*seasonalLowCoverage:lod===quality?seasonalBlend:0;
+      art.root.visible=weight>0;
+      art.setCoverage(weight);
+    }
+    setSeasonalFallbackVisible(seasonalEffectiveCoverage()<.98);
+  };
+  const updateSeasonalCoverage=(position,now)=>{
+    if(!seasonalBounds)return;
+    const dt=lastSeasonalBlendTime===undefined?0:Math.min(100,now-lastSeasonalBlendTime);
+    lastSeasonalBlendTime=now;
+    const [x,z]=position,[west,north,east,south]=seasonalBounds;
+    const distance=Math.hypot(Math.max(west-x,0,x-east),Math.max(north-z,0,z-south));
+    const target=Number(seasonalLayers.has(quality)&&quality!=='low'&&distance<63);
+    seasonalBlend=THREE.MathUtils.clamp(seasonalBlend+Math.sign(target-seasonalBlend)*Math.min(Math.abs(target-seasonalBlend),dt/460),0,1);
+    const lowTarget=Number(seasonalLayers.has('low')&&distance<112);
+    seasonalLowCoverage+=Math.sign(lowTarget-seasonalLowCoverage)*Math.min(Math.abs(lowTarget-seasonalLowCoverage),dt/430);
+    showSeasonalLod();
+  };
+  if(cherryEnabled&&seasonalGrove&&seasonalBounds)for(const lod of cherryHill.lods){
+    const dependencies=cherryHill.models.map(model=>model+'-'+lod+'.glb');
+    manifests.push({
+      id:seasonalGrove.id+':'+lod,bounds:seasonalBounds,
+      loadRadius:lod==='low'?128:72,keepRadius:lod==='low'?176:128,
+      lane:lod==='low'?'cherry-low':'cherry-detail',bias:-100,lods:[lod],continuousPresentation:true,
+      assets:{directory:assetUrl('assets/north-entrance/'),shared:dependencies},
+      hasDetail:()=>lod==='low'||lod===quality,
+      async load(signal,frame){
+        const module=await import('./environment-assets.js');
+        signal.throwIfAborted();
+        const leases=dependencies.map(key=>module.acquireEnvironmentAsset(key));
+        const release=()=>{for(const lease of leases)lease.release();};
+        signal.addEventListener('abort',release,{once:true});
+        try{
+          const requestStart=performance.now();
+          const models=await Promise.all(leases.map(lease=>lease.ready));
+          const assetPreparationMs=performance.now()-requestStart;
+          await frame();
+          signal.throwIfAborted();
+          const start=performance.now();
+          const trees=getSeasonalTreePlacements();
+          if(!trees.length)throw new Error('Nenhum plantio sazonal válido no grupo oeste.');
+          const art=buildCherryArt(world,trees,models,lod,seasonalGrove.id);
+          return {
+            mount(){seasonalLayers.set(lod,art);scene.add(art.root);onSakuraArt(art,true);showSeasonalLod();},
+            buildMs:performance.now()-start,assetPreparationMs,
+            estimatedGeometryBytes:estimatedGeometry(art.root),
+            dispose(){seasonalLayers.delete(lod);onSakuraArt(art,false);art.dispose();showSeasonalLod();release();},
+          };
+        }catch(error){release();throw error;}
+        finally{signal.removeEventListener('abort',release);}
+      },
+    });
+  }
   if(cherryEnabled)for(const lod of cherryHill.lods){
     const dependencies=cherryHill.models.map(model=>model+'-'+lod+'.glb');
     manifests.push({
@@ -168,6 +241,22 @@ export function highParkStreaming(scene,world,sun,style,paths,activateEntrance,b
       },
     });
   }
+  const pond=world.features.find(feature=>feature.osmId===pondId&&feature.kind==='water');
+  let shore,shoreTick;
+  if(pond)manifests.push({
+    id:pondDetailId,bounds:pondBounds,loadRadius:110,keepRadius:225,lane:'geometry',
+    lods:['high','balanced','low'],continuousPresentation:true,
+    assets:{source:'Procedural, derived from OSM shoreline',shared:[]},
+    async load(signal,frame){
+      await frame();
+      signal.throwIfAborted();
+      const start=performance.now();
+      const art=buildPondShore(world,pond,quality);
+      return {mount(){shore=art;shoreTick=undefined;scene.add(art.root);},
+        buildMs:performance.now()-start,estimatedGeometryBytes:estimatedGeometry(art.root),
+        dispose(){shore=null;art.root.removeFromParent();disposeScene(art.root);}};
+    },
+  });
   const stream=new WorldStreaming(manifests);
   return {
     add(...data){
@@ -181,7 +270,15 @@ export function highParkStreaming(scene,world,sun,style,paths,activateEntrance,b
     update:(position,velocity,look,view)=>{
       renderer=view.renderer;
       stream.update(position,velocity,look,view);
-      if(cherryEnabled)updateCherryCoverage(position,performance.now());
+      if(shore){
+        const now=performance.now(),dt=Math.min(100,now-(shoreTick??now));
+        shoreTick=now;
+        const [x,z]=position,[west,north,east,south]=pondBounds;
+        const near=Math.hypot(Math.max(west-x,0,x-east),Math.max(north-z,0,z-south));
+        shore.coverage.value=THREE.MathUtils.clamp(shore.coverage.value+(near<150?1:-1)*dt/560,0,1);
+        shore.root.visible=shore.coverage.value>0;
+      }
+      if(cherryEnabled){const now=performance.now();updateCherryCoverage(position,now);updateSeasonalCoverage(position,now);}
     },
     landmarkBounds:()=>gateBounds,
     landmarkState:()=>entranceArt?'detailed':fallback?'structure':'pending',
@@ -189,11 +286,13 @@ export function highParkStreaming(scene,world,sun,style,paths,activateEntrance,b
       if(next===quality)return;
       quality=next;
       for(const sector of stream.sectors)
-        if(sector.id.startsWith(cherryHill.id+':')&&!sector.hasDetail())stream.evict(sector);
-      showCherryLod();
+        if((sector.id.startsWith(cherryHill.id+':')||sector.id.startsWith((seasonalGrove?.id??'')+':'))&&!sector.hasDetail())stream.evict(sector);
+      showCherryLod();showSeasonalLod();
     },
-    async prime({cherry=false}={}){
-      await stream.prime(sector=>cherry===sector.id.startsWith(cherryHill.id+':'));
+    async prime({cherry=false,pond=false}={}){
+      await stream.prime(sector=>sector.id===pondDetailId?pond:
+        !sector.id.startsWith('west-road-sakura:')&&cherry===sector.id.startsWith(cherryHill.id+':'));
+      if(pond&&shore)shore.coverage.value=1;
       if(cherry){blend=Number(quality!=='low');lowCoverage=1;showCherryLod();}
     },
     dispose(){disposed=true;stream.dispose();fallback?.removeFromParent();gateLease?.release();},
@@ -201,6 +300,9 @@ export function highParkStreaming(scene,world,sun,style,paths,activateEntrance,b
       const sectors=stream.stats();
       return {cherryHill:{futureMemoryPosition:memoryAnchor,lod:cherryLod(),detailCoverage:blend,lowCoverage,trees:trees?.length??0,assets:cherryStats(),
         estimatedTextureBytes:cherryLod()?estimatedTextures(cherryLayers.get(cherryLod()).root,{shadow:{}}):0},
+        grenadierPond:{shoreInstances:shore?.count??0,coverage:shore?.coverage.value??0},
+        firstSakura:{id:seasonalGrove?.id??null,lod:seasonalLayers.has(quality)?quality:seasonalLayers.has('low')?'low':null,
+          detailCoverage:seasonalBlend,lowCoverage:seasonalLowCoverage,trees:getSeasonalTreePlacements().length},
         landmarkState:entranceArt?'detailed':fallback?'structure':'pending',sectors,assets:assetStats(),
         firstPresentationCount:sectors.reduce((total,s)=>total+s.firstPresentationCount,0),
         lateActivationCount:sectors.reduce((total,s)=>total+s.lateActivationCount,0),
