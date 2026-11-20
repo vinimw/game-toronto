@@ -35,7 +35,13 @@ export function prepareHighParkMap(data){
   return {...data,spawn,memory,label:'High Park norte · © OpenStreetMap contributors'};
 }
 
-export async function loadWorld(){
+async function readGeography(response,report){
+  const bytes=await response.arrayBuffer();
+  report(bytes.byteLength);
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+export async function loadWorld(onProgress=()=>{}){
   if(globalThis.location && new URLSearchParams(location.search).get('map')==='demo')
     return {...makeDemoWorld(),fallbackReason:'DEMO solicitado por URL.'};
   const expanded=globalThis.location&&new URLSearchParams(location.search).get('park')==='expanded';
@@ -44,18 +50,21 @@ export async function loadWorld(){
       fetch('/data/high-park-expanded.osm.json'),fetch('/data/high-park-terrain.json'),
     ]);
     if(!mapResponse.ok||!terrainResponse.ok)throw new Error('Prévia ampliada de High Park indisponível.');
-    const world=prepareHighParkMap(await mapResponse.json());
+    let received=0;
+    const report=bytes=>onProgress('Dados geográficos',received+=bytes);
+    const [data,terrainData]=await Promise.all([readGeography(mapResponse,report),readGeography(terrainResponse,report)]);
+    const world=prepareHighParkMap(data);
     if(world.dataset!=='high-park-expanded')throw new Error('Recorte ampliado inválido.');
-    const terrainData=await terrainResponse.json();
-    const legacy=new URLSearchParams(location.search).get('entrance')==='legacy';
-    const entranceAssets=legacy?null:await import('./environment-assets.js').then(module=>module.loadEntranceAssets());
-    return {...world,entranceAssets,terrain:createTerrain(terrainData,world.bbox,world.bboxWgs84),terrainData,
+    const flags=new URLSearchParams(location.search);
+    const entranceEnabled=flags.get('entrance')!=='legacy';
+    const streamingEager=import.meta.env?.DEV&&flags.get('streaming')==='eager';
+    return {...world,entranceEnabled,streamingEager,terrain:createTerrain(terrainData,world.bbox,world.bboxWgs84),terrainData,
       label:'High Park ampliado · prévia geográfica'};
   }
   try {
     const response=await fetch(snapshotUrl,{cache:'no-store',headers:{Accept:'application/json'}});
     if(!response.ok)throw new Error('Recorte OSM indisponível.');
-    return prepareHighParkMap(await response.json());
+    return prepareHighParkMap(await readGeography(response,bytes=>onProgress('Dados geográficos',bytes)));
   }catch(error){
     console.info('Game Love: High Park DEMO foi carregado como fallback.',error.message);
     return {...makeDemoWorld(),fallbackReason:error.message};

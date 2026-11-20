@@ -1,3 +1,4 @@
+import {evaluateWorldStreaming} from './world-streaming.mjs';
 import {entranceComparison,entranceComparisonHtml,recordEntranceWalk} from './entrance-art.mjs';
 import {evaluateTerrainGameplay} from './terrain-gameplay.mjs';
 import {gunzipSync} from 'node:zlib';
@@ -326,6 +327,11 @@ async function main(){
     const entranceFiles=[photo,'north-entrance-comparison.html','north-entrance-art.json',
       ...(entranceWalk.file?[entranceWalk.file]:[])];
     await writeFile(join(bundle,'north-entrance-comparison.html'),entranceComparisonHtml(matchedEntrance,entranceWalk));
+    const streaming=await evaluateWorldStreaming(browser,started.target,bundle,safeMessage);
+    checks.worldStreaming={status:streaming.status,report:'world-streaming.json'};
+    if(streaming.status!=='passed')issues.push({type:'world-streaming-failed',message:'Consulte world-streaming.json.'});
+    for(const failure of streaming.network.expectedNetworkFailures??[])
+      issues.push({type:'streaming-network-simulation',...failure,expected:true});
     const movementTrace=await evaluateMovement(browser,started.target,bundle,cameraEvaluation,Number(videoFps));
     checks.movement={status:movementTrace.status,report:'movement-diagnostics.json'};
     if(movementTrace.status!=='passed')issues.push({type:'movement-diagnostics-failed',
@@ -364,12 +370,13 @@ async function main(){
         :{status:'not-generated',reason:'Use --camera-evaluation para gravar os clipes.'}};
     const performance={schemaVersion:2,runtime,environment:'Navegador automatizado. Os resultados não equivalem ao desempenho em dispositivos móveis reais.',
       method:'Intervalo bruto entre requestAnimationFrame. 15 intervalos de aquecimento e 75 amostras por vista estática.',
-      captures:metrics,motion:motion?{...motion,runtime}:null};
+      captures:metrics,worldStreaming:'world-streaming.json',motion:motion?{...motion,runtime}:null};
     const json=(file,value)=>writeFile(join(bundle,file),JSON.stringify(value,null,2)+'\n');
     await Promise.all([json('metadata.json',metadata),json('performance.json',performance),json('console-errors.json',issues),json('geographic-correspondence.json',geography)]);
 
     await json('north-entrance-art.json',{status:entranceStatus,pairs:matchedEntrance,walk:entranceWalk,photo});
     await json('high-park-terrain-review.json',terrainReport);
+    await json('world-streaming.json',streaming);
     await json('memory-gameplay.json',memoryGameplay);
     await json('movement-diagnostics.json',movementTrace);
     await json('automatic-camera-diagnostics.json',automaticCamera);
@@ -387,7 +394,7 @@ async function main(){
 
     // Explicit allowlist. Nothing outside this staging directory can enter the archive.
     const files=['metadata.json','performance.json','console-errors.json','geographic-correspondence.json',
-      'report.html',...entranceFiles,'high-park-terrain-review.json',...terrainFiles,'memory-gameplay.json',...movementFiles,...standaloneFiles,...geographicFiles,...captures.flatMap(capture=>capture.file?[capture.file]:[]),...comparisonFiles];
+      'report.html','world-streaming.json',...streaming.videos,...entranceFiles,'high-park-terrain-review.json',...terrainFiles,'memory-gameplay.json',...movementFiles,...standaloneFiles,...geographicFiles,...captures.flatMap(capture=>capture.file?[capture.file]:[]),...comparisonFiles];
     if((await run('zip',['-q','-X',archive,...files],{cwd:bundle})).code!==0)
       throw new Error('Falha ao criar o ZIP.');
     if((await run('unzip',['-tq',archive],{quiet:true})).code!==0)

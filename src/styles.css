@@ -61,3 +61,10 @@ button{touch-action:manipulation}
 #data-status[data-origin="demo"]{color:#fff4dc;background:#746342}
 #data-status[data-origin="osm"]{color:#edfae9;background:#365749}
 #osm-attribution{color:inherit;white-space:nowrap;text-decoration:underline}
+
+.transition-content{text-align:center}
+.transition-content strong{display:block;font:500 26px Georgia,serif}
+#transition-stage{display:block;margin-top:8px;min-height:1.2em}
+#transition-retry{position:static;width:auto;height:auto;padding:.65rem 1rem;margin-top:12px;font-size:inherit}
+
+#transition-retry[hidden]{display:none}

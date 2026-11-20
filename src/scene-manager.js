@@ -12,8 +12,8 @@ function localPoint(geo, origin) {
 }
 
 export class SceneManager {
-  constructor({manifest,loadRegion,buildScene,avatar,sharedResources=[],onBusy=()=>{},fade=async()=>{},onActivate=()=>{}}) {
-    Object.assign(this,{manifest,loadRegion,buildScene,avatar,onBusy,fade,onActivate});
+  constructor({manifest,loadRegion,buildScene,avatar,sharedResources=[],onBusy=()=>{},onProgress=()=>{},fade=async()=>{},onActivate=()=>{}}) {
+    Object.assign(this,{manifest,loadRegion,buildScene,avatar,onBusy,onProgress,fade,onActivate});
     this.sharedResources=new Set([...collectResources(avatar.root),...sharedResources]);
     this.active=null;this.loading=false;
     const ids=new Set();
@@ -66,6 +66,7 @@ export class SceneManager {
   unload() {
     if(!this.active)return;
     this.avatar.root.removeFromParent();
+    this.active.stats.streaming?.dispose();
     disposeScene(this.active.scene,this.sharedResources);
     this.active=null;
   }
@@ -81,12 +82,21 @@ export class SceneManager {
       await this.fade(true,definition.name);
       // Keep the old scene for recoverable data/validation errors. Only data,
       // never a second GPU scene, is prepared while it remains alive.
-      const prepared=this.prepare(id,entryId,await this.loadRegion(definition));
+      this.onProgress('Dados geográficos');
+      const prepared=this.prepare(id,entryId,await this.loadRegion(definition,this.onProgress));
       if(this.active)previous={prepared:this.active,position:[this.avatar.root.position.x,this.avatar.root.position.z],yaw:this.avatar.root.rotation.y};
+      this.onProgress('Terreno e navegação');
       this.unload();
+      let destination;
       try {
-        this.activate(this.create(prepared));
+        destination=this.create(prepared);
+        if(prepared.world.streamingEager)await destination.stats.streaming?.prime();
+        this.activate(destination);
       } catch(error) {
+        if(destination&&this.active!==destination){
+          destination.stats.streaming?.dispose();
+          disposeScene(destination.scene,this.sharedResources);
+        }
         this.unload();
         // Rebuild the old scene only after partial destination disposal.
         if(previous)this.activate(this.create(previous.prepared),previous.position,previous.yaw);

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {latLonToLocal} from './geo.js';
 import {densify} from './high-park-terrain.js';
+import {collectResources} from './scene-resources.js';
 import {realPathAppearance} from './visual-settings.js';
 
 // Site anchor estimated from the municipal photograph and Colborne Lodge Dr.
@@ -24,8 +25,29 @@ function weight(x,z){
   return THREE.MathUtils.smoothstep(Math.min(x-area[0],z-area[1],area[2]-x,area[3]-z),0,11);
 }
 
-export function installEntranceArt(scene,world,sun){
-  const {models,surfaces}=world.entranceAssets;
+export function entranceGateBlocks(world){
+  const [x,z]=latLonToLocal(gateAnchor.lat,gateAnchor.lon,world.origin);
+  const anchor=new THREE.Vector3(x,world.terrain.at(x,z),z),up=new THREE.Vector3(0,1,0);
+  // Block the four masonry pillars at their visual positions; the road and
+  // pedestrian opening remain on the exact OSM geometry.
+  return [-10.13,-5.9,5.9,10.13].map((x,i)=>{
+    const half=i===0||i===3?.42:.55;
+    const points=[[-half,-half],[half,-half],[half,half],[-half,half]].map(([dx,dz])=>{
+      const position=new THREE.Vector3(x+dx,0,dz).applyAxisAngle(up,.24).add(anchor);
+      return [position.x,position.z];
+    });
+    return {kind:'building',id:'north-gate-pier-'+i,points,
+      minHeight:anchor.y,height:anchor.y+(half>.5?3.55:1.6)};
+  });
+
+}
+
+export const entranceArtBounds=area;
+
+export function installEntranceArt(scene,world,sun,{models,surfaces,shared},paths){
+  const originalSun=sun.position.clone();
+  const originalShadowCamera={left:sun.shadow.camera.left,right:sun.shadow.camera.right,
+    top:sun.shadow.camera.top,bottom:sun.shadow.camera.bottom,near:sun.shadow.camera.near,far:sun.shadow.camera.far};
   const terrain=world.terrain;
   const originalSky=scene.background,originalFog=scene.fog.clone();
   const sky=new THREE.Color(0xbccfdf);
@@ -35,6 +57,9 @@ export function installEntranceArt(scene,world,sun){
       roughness:.94,metalness:0,side:THREE.DoubleSide,normalScale:new THREE.Vector2(.58,.58),aoMapIntensity:.62})]));
   const overlays={};
   function overlay(geometry,key){
+    geometry.computeBoundingBox();
+    const {min,max}=geometry.boundingBox;
+    if(max.x<=area[0]||max.z<=area[1]||min.x>=area[2]||min.z>=area[3])return;
     const position=geometry.attributes.position,index=geometry.index;
     const count=index?.count??position.count,vertices=[],colors=[],uv=[];
     const height=key==='grass'?.001:.045;
@@ -69,12 +94,13 @@ export function installEntranceArt(scene,world,sun){
   }
   for(const chunk of scene.children.filter(object=>object.name==='terrain-chunk'))overlay(chunk.geometry,'grass');
   const gatePosition=latLonToLocal(gateAnchor.lat,gateAnchor.lon,world.origin);
-  const gate=models['north-gate'];
+  const gate=models['north-gate'].clone(true);
   gate.position.set(gatePosition[0],terrain.at(...gatePosition),gatePosition[1]);
   gate.rotation.y=.24;
   gate.traverse(mesh=>{
     if(!mesh.isMesh)return;
     if(mesh.material.name==='Masonry_PBR'){
+      mesh.material=mesh.material.clone();
       Object.assign(mesh.material,surfaces.masonry,{
         color:new THREE.Color(0xb3afa1),normalScale:new THREE.Vector2(.52,.52),aoMapIntensity:.7,
       });
@@ -85,17 +111,7 @@ export function installEntranceArt(scene,world,sun){
   root.add(gate);
   gate.updateMatrixWorld(true);
 
-  // Block the four masonry pillars at their visual positions; the road and
-  // pedestrian opening remain on the exact OSM geometry.
-  const gateBlocks=[-10.13,-5.9,5.9,10.13].map((x,i)=>{
-    const half=i===0||i===3?.42:.55;
-    const points=[[-half,-half],[half,-half],[half,half],[-half,half]].map(([dx,dz])=>{
-      const position=gate.localToWorld(new THREE.Vector3(x+dx,0,dz));
-      return [position.x,position.z];
-    });
-    return {kind:'building',id:'north-gate-pier-'+i,points,
-      minHeight:gate.position.y,height:gate.position.y+(half>.5?3.55:1.6)};
-  });
+  const gateBlocks=entranceGateBlocks(world);
 
   const instances=new Map(),batches=[],cameraVolumes=[];
   const leafMaps=new Map();
@@ -111,15 +127,16 @@ export function installEntranceArt(scene,world,sun){
       model.traverse(part=>{
         if(!part.isMesh)return;
         const foliage=part.material.name.startsWith('LeafCards');
+        const material=foliage?part.material.clone():part.material;
         if(foliage){
           const key=variant.split('-')[0],texture=part.material.map;
-          if(leafMaps.has(key)){texture.dispose();part.material.map=leafMaps.get(key);}
+          if(leafMaps.has(key))material.map=leafMaps.get(key);
           else leafMaps.set(key,texture);
-          part.material.alphaTest=.44;part.material.transparent=false;
-          part.material.side=THREE.DoubleSide;part.material.depthWrite=true;
+          material.alphaTest=.44;material.transparent=false;
+          material.side=THREE.DoubleSide;material.depthWrite=true;
         }
-        part.geometry.applyMatrix4(part.matrixWorld);
-        const batch=new THREE.InstancedMesh(part.geometry,part.material,selection.length);
+        const geometry=part.matrixWorld.equals(new THREE.Matrix4())?part.geometry:part.geometry.clone().applyMatrix4(part.matrixWorld);
+        const batch=new THREE.InstancedMesh(geometry,material,selection.length);
         batch.name=variant+'-'+lod+(foliage?':foliage':':bark');
         batch.castShadow=true;batch.receiveShadow=true;
         selection.forEach((tree,index)=>{
@@ -222,13 +239,18 @@ export function installEntranceArt(scene,world,sun){
   sun.shadow.camera.right=sun.shadow.camera.top=33;
   sun.shadow.camera.near=15;sun.shadow.camera.far=140;
   sun.shadow.normalBias=.12;sun.shadow.bias=-.0002;
-  const originalDispose=sun.shadow.dispose.bind(sun.shadow);
-  root.addEventListener('removed',()=>originalDispose(),{once:true});
+  for(const [geometry,color] of paths)overlay(geometry,color===world.pathStyle.paved?'pavement':'asphalt');
   return {
     gateBlocks,cameraVolumes,
-    pathOverlay(geometry,color,style){
-      const type=color===style.paved?'pavement':'asphalt';
-      overlay(geometry,type);
+    root,
+    dispose(){
+      for(const resource of collectResources(root))if(!shared.has(resource))resource.dispose();
+      root.removeFromParent();
+      sun.castShadow=false;
+      sun.shadow.dispose();sun.shadow.map=null;sun.shadow.mapPass=null;
+      sun.target.removeFromParent();sun.position.copy(originalSun);
+      Object.assign(sun.shadow.camera,originalShadowCamera);
+      scene.background=originalSky;scene.fog=originalFog;
     },
     setQuality(next){
       profile=next;

@@ -61,7 +61,10 @@
         <p data-configured></p>
       </div>
     </aside>
-    <div id="scene-transition" class="scene-transition hidden" role="status" aria-live="polite"><span id="transition-label">Carregando Toronto…</span></div>
+    <div id="scene-transition" class="scene-transition hidden"><div class="transition-content">
+      <div role="status" aria-live="polite"><strong id="transition-label">Carregando Toronto…</strong><span id="transition-stage"></span><small id="transition-bytes"></small></div>
+      <button id="transition-retry" class="close-button" type="button" hidden>Tentar novamente</button>
+    </div></div>
     <div id="toast" class="toast hidden" role="status"></div>
   </main>
   <script type="module" src="/src/main.js"></script>

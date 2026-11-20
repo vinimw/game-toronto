@@ -8,7 +8,8 @@ import {buildDemoCafe} from './demo-cafe.js';
 import {plantPark} from './park-vegetation.js';
 import {addPathBatches,terrainTexture,worldUVs} from './park-surfaces.js';
 import {pathWidth} from './visual-settings.js';
-import {installEntranceArt} from './north-entrance-art.js';
+import {entranceGateBlocks} from './north-entrance-art.js';
+import {highParkStreaming} from './high-park-streaming.js';
 import {terrainBuildingBatches} from './terrain-buildings.js';
 import {addTerrainChunks,densify} from './high-park-terrain.js';
 import {parkEnvironment} from './park-environment.js';
@@ -51,15 +52,29 @@ export function buildWorld(scene,world,portals=[],evidence){
     worldUVs(mesh.geometry,true,real);mesh.material.map=texture;scene.add(mesh);
     evidence?.polygon(feature,mesh);
   }
-  const entrance=terrain&&world.entranceAssets?installEntranceArt(scene,world,sun):null;
+  let entrance=null,quality='high',detailFocus=[];
+  const pathLayers=[];
   waters.forEach(feature=>{
     const mesh=flat(feature.points,terrain?.waterLevel(feature.points)??.02,style.water);scene.add(mesh);
     evidence?.polygon(feature,mesh);
   });
   const routeMeshes=terrain?paths.map(feature=>({...feature,points:densify(feature.points)})):paths;
-  addPathBatches(scene,routeMeshes,style,pathWidth,texture,evidence?.strip,real,terrain,entrance&&((geometry,color)=>entrance.pathOverlay(geometry,color,style)));
+  addPathBatches(scene,routeMeshes,style,pathWidth,texture,evidence?.strip,real,terrain,world.entranceEnabled?((geometry,color)=>pathLayers.push([geometry,color])):null);
   const furniture=[],cameraObstacles=[],clearings=[];
   const landmarks=[],buildingBatches=terrain?terrainBuildingBatches(scene):null;
+  const streaming=terrain?highParkStreaming(scene,world,sun,style,pathLayers,art=>{
+    if(entrance)cameraVolumes.splice(cameraVolumes.length-entrance.cameraVolumes.length);
+    entrance=art;
+    if(art){
+      cameraVolumes.push(...art.cameraVolumes);
+      art.setQuality(quality);
+      art.setDetailFocus(...detailFocus);
+    }
+  },(feature,index,floor)=>{
+    const model=makeBuilding(feature,index);
+    model.position.y=floor;
+    return model;
+  }):null;
   buildings.forEach((feature,index)=>{
     const definition=findLandmark(world,feature);
     const floor=terrain?Math.min(...feature.points.map(point=>terrain.at(...point))):0;
@@ -76,7 +91,7 @@ export function buildWorld(scene,world,portals=[],evidence){
       cameraObstacles.push({...blocker,height:model.height+floor});
       if(model.forecourt)clearings.push(model.forecourt);
     }else{
-      const mesh=makeBuilding(feature,index);
+      const mesh=streaming?.add(feature,index,floor)?null:makeBuilding(feature,index);
       if(mesh){
         mesh.position.y=floor;
         if(buildingBatches)buildingBatches.add(mesh,feature.points[0]);
@@ -86,7 +101,7 @@ export function buildWorld(scene,world,portals=[],evidence){
     }
   });
   buildingBatches?.attach();
-  if(entrance)furniture.push(...entrance.gateBlocks);
+  if(world.entranceEnabled)furniture.push(...entranceGateBlocks(world));
   cameraObstacles.push(...furniture);
   const collisionFeatures=furniture.length?[...world.features,...furniture]:world.features;
   const canWalk=createWalkTest(collisionFeatures,world.bbox||[-1000,-1000,1000,1000]);
@@ -95,14 +110,15 @@ export function buildWorld(scene,world,portals=[],evidence){
   const vegetation=world.vegetation===false?{trees:0,cameraVolumes:[],setQuality(){}}:
     plantPark(scene,world,portals,(point,radius)=>!canWalk(point[0],point[1],radius),clearings,environment);
   const {trees,cameraVolumes,vegetationMetrics}=vegetation;
-  if(entrance)cameraVolumes.push(...entrance.cameraVolumes);
-  const setCameraOccluders=entrance?ids=>{vegetation.setCameraOccluders?.(ids);entrance.setOccluders(ids);}:vegetation.setCameraOccluders;
+  const setCameraOccluders=ids=>{vegetation.setCameraOccluders?.(ids);entrance?.setOccluders(ids);};
   const setDetailFocus=real?(x,z)=>{
+    detailFocus=[x,z];
     vegetation.setDetailFocus?.(x,z);
     entrance?.setDetailFocus(x,z);
     for(const {model} of landmarks)model.setFocus?.(x,z);
   }:undefined;
   function setQuality(profile){
+    quality=profile;
     vegetation.setQuality(profile);
     entrance?.setQuality(profile);
     for(const {definition,model} of landmarks)
@@ -128,7 +144,7 @@ export function buildWorld(scene,world,portals=[],evidence){
       [px-1.8,pz-.125],[px+1.8,pz-.125],[px+1.8,pz+.125],[px-1.8,pz+.125],
     ]});
   }
-  return {terrain,entranceArt:entrance?.evidence,environment:environment.id,canWalk,cameraObstacles,cameraVolumes,setCameraOccluders,setQuality,setDetailFocus,vegetationMetrics,memoryPoints,animateMemoryMarkers,trees,
+  return {terrain,streaming,get entranceArt(){return entrance?.evidence;},environment:environment.id,canWalk,cameraObstacles,cameraVolumes,setCameraOccluders,setQuality,setDetailFocus,vegetationMetrics,memoryPoints,animateMemoryMarkers,trees,
     landmarks:landmarks.map(({definition:{build,...identity}})=>identity),
     counts:{paths:paths.length,buildings:buildings.length,water:waters.length,trees}};
 }

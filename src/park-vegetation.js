@@ -156,7 +156,7 @@ export function plantPark(scene,world,portals,blocked,clearings=[],environment=p
     const type=real?zone(point):null;
     const spacing=real&&type!=='wood'?style.treeSpacing+.35:style.treeSpacing;
     if(real&&(!type||type==='open'))return false;
-    if(world.entranceAssets&&Math.hypot(point[0]+19,point[1]+111)<35)return false;
+    if(world.entranceEnabled&&Math.hypot(point[0]+19,point[1]+111)<35)return false;
     if(!clear(point,width*1.25)||trees.some(([x,z])=>Math.hypot(x-point[0],z-point[1])<spacing))return false;
     const [x,z]=point,treeId=`tree:${trees.length}`;trees.push(point);
     const crownY=height-depth*.65;

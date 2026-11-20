@@ -87,7 +87,9 @@ async function prepare(id){
     await manager.load(point.region,point.entry);
     sceneLoadMs=performance.now()-start;
   }
-  const active=manager.active,world=active.world,origin=world.mode==='osm'?'OSM REAL':'DEMO';
+  const active=manager.active;
+  await active.stats.streaming?.prime();
+  const world=active.world,origin=world.mode==='osm'?'OSM REAL':'DEMO';
   const [minX,minZ,maxX,maxZ]=world.bbox;
   const geographicBounds=origin==='OSM REAL'&&world.origin?{
     southwest:geographicPosition([minX,maxZ],world.origin),

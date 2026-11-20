@@ -34,6 +34,22 @@ export function createTerrain(data,bbox,bboxWgs84){
   return {at,get,xAt,zAt,width,height,waterLevel};
 }
 
+// Same grid for rendering and sector IDs; IDs are relative to the imported origin.
+export const terrainSectorStep=16;
+
+export function terrainSectors(terrain,step=terrainSectorStep){
+  const sectors=[];
+  for(let row=0;row<terrain.height-1;row+=step){
+    for(let col=0;col<terrain.width-1;col+=step){
+      const rows=Math.min(step,terrain.height-1-row);
+      const cols=Math.min(step,terrain.width-1-col);
+      sectors.push({id:`high-park:${col/step}:${row/step}`,
+        row,col,rows,cols,bounds:[terrain.xAt(col),terrain.zAt(row),terrain.xAt(col+cols),terrain.zAt(row+rows)]});
+    }
+  }
+  return sectors;
+}
+
 export function addTerrainChunks(scene,terrain,areas,style,texture){
   const material=new THREE.MeshLambertMaterial({map:texture,vertexColors:true});
   const base=new THREE.Color(style.ground),grass=new THREE.Color(style.meadow);
@@ -44,9 +60,7 @@ export function addTerrainChunks(scene,terrain,areas,style,texture){
     return {points:f.points,minX:Math.min(...xs),maxX:Math.max(...xs),minZ:Math.min(...zs),maxZ:Math.max(...zs),
       color:f.kind==='sport'?sport:f.tags.natural==='wood'||f.tags.landuse==='forest'?wood:grass};
   });
-  const step=32;
-  for(let row=0;row<terrain.height-1;row+=step)for(let col=0;col<terrain.width-1;col+=step){
-    const rows=Math.min(step,terrain.height-1-row),cols=Math.min(step,terrain.width-1-col);
+  for(const {row,col,rows,cols} of terrainSectors(terrain,32)){
     const positions=[],colors=[],indices=[];
     const near=regions.filter(f=>f.minX<=terrain.xAt(col+cols)&&f.maxX>=terrain.xAt(col)&&
       f.minZ<=terrain.zAt(row+rows)&&f.maxZ>=terrain.zAt(row));

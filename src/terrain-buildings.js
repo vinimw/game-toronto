@@ -22,6 +22,10 @@ export function terrainBuildingBatches(scene){
         mesh.geometry.dispose();mesh.material.dispose();
       }
     },
+    dispose(){
+      for(const parts of chunks.values())for(const part of parts)part.dispose();
+      chunks.clear();
+    },
     attach(){
       const material=new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide});
       for(const parts of chunks.values()){
@@ -31,6 +35,7 @@ export function terrainBuildingBatches(scene){
         for(const part of parts)part.dispose();
       }
       if(!chunks.size)material.dispose();
+      chunks.clear();
     },
   };
 }

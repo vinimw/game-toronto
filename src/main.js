@@ -72,13 +72,35 @@ const usesCoupledRig=()=>recentering.mode==='third-person-coupled';
 let modalOpen=false,mapOpen=false,nearMemory=null,nearPortal=null,frameCounter=0,accum=0;
 let clock=0;
 const transition=$('scene-transition');
+const retry=$('transition-retry');
+let transitionStarted=0,firstImageMs=null,movementReadyMs=null,firstRender=0;
+async function startGame(){
+  retry.hidden=true;
+  try{await manager.load('toronto','start');showToast('Toronto demonstrativa · aproxime-se do portal para entrar no High Park.');}
+  catch(error){
+    console.error('Initial region failed:',error);
+    transition.classList.remove('hidden');transition.style.opacity='1';
+    $('transition-label').textContent='Não foi possível abrir Toronto.';
+    $('transition-stage').textContent='';
+    $('transition-bytes').textContent='';
+    retry.hidden=false;retry.focus();
+  }
+}
+retry.addEventListener('click',startGame);
 const manager=new SceneManager({manifest:regionManifest,loadRegion,buildScene:buildWorld,avatar,
   onBusy(busy){
     controls.reset();
-    if(busy){gameState.save();hideToast();closeModal();toggleMap(false);nearPortal=null;nearMemory=null;$('action-wrap').classList.add('hidden');}
+    if(busy){transitionStarted=performance.now();firstImageMs=movementReadyMs=null;gameState.save();hideToast();closeModal();toggleMap(false);nearPortal=null;nearMemory=null;$('action-wrap').classList.add('hidden');}
+    if(!busy&&manager.active)movementReadyMs=performance.now()-transitionStarted;
     $('app').setAttribute('aria-busy',String(busy));
   },
+  onProgress(stage,bytes){
+    $('transition-stage').textContent=stage;
+    if(Number.isFinite(bytes))$('transition-bytes').textContent=
+      Math.round(bytes/1024).toLocaleString('pt-BR')+' KiB de dados recebidos';
+  },
   async fade(opaque,name){
+    if(opaque){$('transition-stage').textContent='Preparando região';$('transition-bytes').textContent='';}
     transition.classList.remove('hidden');
     $('transition-label').textContent=`Carregando ${name}…`;
     const animation=transition.animate([{opacity:opaque?0:1},{opacity:opaque?1:0}],
@@ -88,6 +110,7 @@ const manager=new SceneManager({manifest:regionManifest,loadRegion,buildScene:bu
   },
   onActivate(active){
     world=active.world;stats=active.stats;stats.setQuality(quality);
+    firstRender=performance.now();
     renderer.shadowMap.enabled=Boolean(stats.entranceArt);
     renderer.shadowMap.type=THREE.PCFShadowMap;
     avatar.root.position.y=stats.terrain?.at(avatar.root.position.x,avatar.root.position.z)??0;
@@ -261,6 +284,11 @@ if(reviewCapture)window.stageCameraReview=([x,z],yaw)=>{
   recentering.reset();coupledRig.reset(yaw);
   cameraClearance=null;
 };
+if(reviewCapture)window.inspectWorldStreaming=()=>({
+  ...stats?.streaming?.stats(),
+  firstImageMs,movementReadyMs,sceneActivationMs:firstRender-transitionStarted,
+  renderer:{...renderer.info.memory,...renderer.info.render},
+});
 const reviewPoint=new THREE.Vector3();
 const bodySampleHeights=[.15,1.25,2.45];
 function inspectCameraBody(){
@@ -368,7 +396,13 @@ Modo: ${recentering.mode} · ${diagnostics.followState}`;
     $('position-text').textContent=`${Math.round(avatar.root.position.x)}m E · ${Math.round(-avatar.root.position.z)}m N`;
   }
   stats.setDetailFocus?.(camera.position.x,camera.position.z);
+  camera.getWorldDirection(viewDirection);
+  if(!world.streamingEager)stats.streaming?.update([avatar.root.position.x,avatar.root.position.z],
+    dt>0?[(avatar.root.position.x-previousPosition[0])/dt,(avatar.root.position.z-previousPosition[1])/dt]:[0,0],
+    [viewDirection.x,viewDirection.z]);
+  renderer.shadowMap.enabled=Boolean(stats.entranceArt);
   renderer.render(manager.active.scene,camera);
+  if(firstImageMs===null&&firstRender>=transitionStarted)firstImageMs=performance.now()-transitionStarted;
   // Development-only DOM diagnostics for repeated-transition GPU resource checks.
   if(import.meta.env.DEV)renderer.domElement.dataset.resources=JSON.stringify({...renderer.info.memory,
     region:manager.active.id,objects:manager.active.scene.children.length,calls:renderer.info.render.calls,triangles:renderer.info.render.triangles,avatars:manager.active.scene.children.filter(o=>o===avatar.root).length});
@@ -392,5 +426,4 @@ Modo: ${recentering.mode} · ${diagnostics.followState}`;
 }
 renderer.setAnimationLoop(animate);
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
-try{await manager.load('toronto','start');showToast('Toronto demonstrativa · aproxime-se do portal para entrar no High Park.');}
-catch(error){console.error('Initial region failed:',error);showToast('Não foi possível iniciar a região. Recarregue para tentar novamente.');}
+await startGame();
