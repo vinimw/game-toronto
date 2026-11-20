@@ -118,3 +118,6 @@ npm run dev -- --port 5175 --strictPort
 Execute `npm run review:export` para gerar as capturas e os relatórios em
 `artifacts/reviews/game-love-review.zip`. Veja [instalação, pontos de captura
 e solução de problemas](docs/REVIEW_EXPORT.md).
+
+A publicação estática usa GitHub Actions e aceita o nome do repositório
+por configuração. Consulte [GitHub Pages](docs/GITHUB_PAGES.md).

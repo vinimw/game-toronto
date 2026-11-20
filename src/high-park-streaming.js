@@ -1,3 +1,4 @@
+import {assetUrl} from './asset-url.js';
 import * as THREE from 'three';
 import {terrainSectors} from './high-park-terrain.js';
 import {terrainBuildingBatches} from './terrain-buildings.js';
@@ -63,7 +64,7 @@ export function highParkStreaming(scene,world,sun,style,paths,activateEntrance,b
   if(world.entranceEnabled){
     manifests.push({
       id:'high-park:north-entrance',bounds:entranceArtBounds,loadRadius:128,keepRadius:198,lane:'assets',bias:-180,
-      lods:['high','balanced'],assets:{directory:'/assets/north-entrance/',shared:entranceDependencies},
+      lods:['high','balanced'],assets:{directory:assetUrl('assets/north-entrance/'),shared:entranceDependencies},
       async load(signal,frame){
         const module=await import('./environment-assets.js');
         assetStats=module.entranceAssetStats;

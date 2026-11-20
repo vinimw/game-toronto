@@ -1,10 +1,11 @@
+import {assetUrl} from './asset-url.js';
 import {makeDemoWorld} from './demo-world.js';
 import {latLonToLocal,nearestOnPath} from './geo.js';
 import {createWalkTest} from './movement.js';
 import {createTerrain} from './high-park-terrain.js';
 import {HIGH_PARK_GATE} from './regions.js';
 
-const snapshotUrl='/data/high-park.osm.json';
+const snapshotUrl=assetUrl('data/high-park.osm.json');
 
 export function pedestrianPath(feature){
   const tags=feature.tags??{};
@@ -47,7 +48,7 @@ export async function loadWorld(onProgress=()=>{}){
   const expanded=globalThis.location&&new URLSearchParams(location.search).get('park')==='expanded';
   if(expanded){
     const [mapResponse,terrainResponse]=await Promise.all([
-      fetch('/data/high-park-expanded.osm.json'),fetch('/data/high-park-terrain.json'),
+      fetch(assetUrl('data/high-park-expanded.osm.json')),fetch(assetUrl('data/high-park-terrain.json')),
     ]);
     if(!mapResponse.ok||!terrainResponse.ok)throw new Error('Prévia ampliada de High Park indisponível.');
     let received=0;

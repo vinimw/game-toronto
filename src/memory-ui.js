@@ -1,3 +1,4 @@
+import {assetUrl} from './asset-url.js';
 import {regionManifest} from './regions.js';
 
 const text=value=>String(value??'').replace(/[&<>"']/g,char=>({
@@ -9,7 +10,7 @@ const regionName=memory=>text(regionManifest[memory.regionId]?.name??memory.regi
 function imagePath(memory){
   const path=memory.image?.src;
   return typeof path==='string'&&/^\/(?!\/)[\p{L}\p{N}._/ -]+$/u.test(path)&&
-    !path.split('/').some(part=>part==='..'||part==='.')?text(path):null;
+    !path.split('/').some(part=>part==='..'||part==='.')?text(assetUrl(path)):null;
 }
 const landscape=()=>'<div class="memory-art" aria-hidden="true"><div class="memory-sun">✦</div><div class="memory-hill"></div></div>';
 

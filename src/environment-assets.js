@@ -1,3 +1,4 @@
+import {assetUrl} from './asset-url.js';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
@@ -6,7 +7,7 @@ import {AssetManager} from './asset-manager.js';
 
 import {entranceMaterialFiles,entranceModels,entranceDependencies} from './north-entrance-asset-manifest.js';
 
-const directory='/assets/north-entrance/';
+const directory=assetUrl('assets/north-entrance/');
 const gltf=new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 const assets=new AssetManager({
   async fetchBytes(key,signal){
