@@ -1,3 +1,4 @@
+import {ThirdPersonRig} from './third-person-rig.js';
 import * as THREE from 'three';
 import './styles.css';
 import './mobile-hud.css';
@@ -10,7 +11,7 @@ import {resolveGameplayCamera} from './park-camera.js';
 import {buildWorld} from './world.js';
 import {createCharacter} from './character.js';
 import {finitePoint, resolveCamera, frameTiming, frameMetrics, normalizeMoveInput, projectCameraMovement} from './movement.js';
-import {bindGameControls} from './controls.js';
+import {bindGameControls,movementInput} from './controls.js';
 import {advanceCameraYaw,CameraRecentering} from './camera-follow.js';
 import {PlayerController} from './player-controller.js';
 import {bindSpeedPanel} from './speed-panel.js';
@@ -60,8 +61,11 @@ let albumUnlocked=gameState.state.unlockedMemories.includes(MEMORY_ID);
 const inputs={keys:new Set(),joystickX:0,joystickY:0,runTouch:false};
 const current={yaw:Math.PI*.55,pitch:cameraSettings.pitch,distance:cameraSettings.distance};
 const view={...current};
-const followModeDefault=reviewCapture&&flags.get('camera-follow')==='stable'?'stable':cameraSettings.cameraFollowMode;
+const requestedReviewMode=reviewCapture?flags.get('camera-follow'):null;
+const followModeDefault=['stable','assisted-auto'].includes(requestedReviewMode)?requestedReviewMode:cameraSettings.cameraFollowMode;
 const recentering=new CameraRecentering(followModeDefault);
+const coupledRig=new ThirdPersonRig();
+const usesCoupledRig=()=>recentering.mode==='third-person-coupled';
 let modalOpen=false,mapOpen=false,nearMemory=false,nearPortal=null,frameCounter=0,accum=0;
 let clock=0;
 const transition=$('scene-transition');
@@ -81,7 +85,7 @@ const manager=new SceneManager({manifest:regionManifest,loadRegion,buildScene:bu
   },
   onActivate(active){
     world=active.world;stats=active.stats;stats.setQuality(quality);
-    current.yaw=active.yaw;Object.assign(view,current);recentering.reset();cameraClearance=null;
+    current.yaw=active.yaw;Object.assign(view,current);recentering.reset();coupledRig.reset(active.yaw);cameraClearance=null;
     note=world.mode==='osm'?'Geometria de OpenStreetMap (© colaboradores OSM)':(world.fallbackReason?'Cenário ilustrativo · '+world.fallbackReason:'Cenário demonstrativo ilustrativo · não representa a geografia real');
     const source=$('data-status');
     source.dataset.origin=world.mode==='osm'?'osm':'demo';
@@ -141,7 +145,7 @@ function showAlbum(){if(manager.loading)return;showModal(`<p class="eyebrow">SEU
 function showHelp(){
   if(manager.loading)return;
   showModal(`<p class="eyebrow">COMO JOGAR</p><h2 id="modal-title" class="memory-title">Um passeio por Toronto</h2><p class="memory-copy">Este protótipo valida a câmera, a movimentação, a importação de ruas e o sistema de memórias.</p><div class="help-rows"><p><strong>W A S D</strong><span>Caminhar</span></p><p><strong>Mouse / gesto</strong><span>Girar câmera</span></p><p><strong>Shift / ↟</strong><span>Correr</span></p><p><strong>E / tocar</strong><span>Interagir perto da memória</span></p><p><strong>M / I</strong><span>Mapa / Álbum</span></p><p><strong>Scroll</strong><span>Zoom da câmera</span></p></div><fieldset class="visual-settings"><legend>Câmera e gráficos</legend>
-    <label>Acompanhamento<select id="camera-follow-mode"><option value="stable">Estável</option><option value="assisted-auto">Automático</option></select></label>
+    <label>Acompanhamento<select id="camera-follow-mode"><option value="stable">Estável</option><option value="third-person-coupled">Terceira pessoa com curvas</option></select></label>
     <button id="camera-recenter" type="button">Recentralizar câmera</button>
     <label>Distância da câmera<input id="camera-distance" type="range" min="${cameraSettings.minDistance}" max="${cameraSettings.maxDistance}" step="0.1" value="${current.distance}"></label>
     <label>Inclinação da câmera<input id="camera-pitch" type="range" min="${cameraSettings.minPitch}" max="${cameraSettings.maxPitch}" step="0.01" value="${current.pitch}"></label>
@@ -149,7 +153,11 @@ function showHelp(){
   </fieldset><p class="map-note">${note}.</p>`);
   const followMode=$('camera-follow-mode');
   followMode.value=recentering.mode;
-  followMode.onchange=()=>recentering.setMode(followMode.value);
+  followMode.onchange=()=>{
+    recentering.setMode(followMode.value);
+    coupledRig.reset(avatar.root.rotation.y);
+    current.yaw=view.yaw;
+  };
   $('camera-recenter').onclick=()=>{closeModal();requestRecenter();};
   $('camera-distance').oninput=e=>current.distance=e.target.valueAsNumber;
   $('camera-pitch').oninput=e=>current.pitch=e.target.valueAsNumber;
@@ -204,7 +212,7 @@ window.addEventListener('keydown',e=>{
 window.addEventListener('keyup',e=>inputs.keys.delete(e.key.toLowerCase()));
 const controls=bindGameControls({canvas:renderer.domElement,joystick:$('joystick'),stick:$('stick'),
   runButton:$('mobile-run'),inputs,camera:current,settings:cameraSettings,enabled:()=>!manager.loading&&!modalOpen&&!mapOpen,
-  onCameraInput:()=>recentering.manualInput()});
+  onCameraInput:()=>usesCoupledRig()?coupledRig.orbitManually():recentering.manualInput()});
 $('btn-recenter').addEventListener('click',requestRecenter);
 const speedPanel=bindSpeedPanel($('speed-panel'),player,{minimized:touchHud.matches});
 function resetTiming(){controls.reset();previous=performance.now();accum=frameCounter=0;}
@@ -213,15 +221,10 @@ document.addEventListener('visibilitychange',resetTiming);
 function drawMiniMap(){
   drawLocalMap($('map-canvas'),world,manager.active.portals,[avatar.root.position.x,avatar.root.position.z]);
 }
-function movementInput(){
-  return [
-    Number(inputs.keys.has('d')||inputs.keys.has('arrowright'))-Number(inputs.keys.has('a')||inputs.keys.has('arrowleft'))+inputs.joystickX,
-    Number(inputs.keys.has('w')||inputs.keys.has('arrowup'))-Number(inputs.keys.has('s')||inputs.keys.has('arrowdown'))+inputs.joystickY,
-  ];
-}
 function requestRecenter(){
-    if(!manager.loading&&!modalOpen&&!mapOpen)
-    recentering.request(movementInput()[0],avatar.root.rotation.y);
+  if(manager.loading||modalOpen||mapOpen)return;
+  if(usesCoupledRig())coupledRig.align();
+  else recentering.request(movementInput(inputs)[0],avatar.root.rotation.y);
 }
 let cameraClearance=null;
 const target=new THREE.Vector3();
@@ -234,7 +237,7 @@ if(reviewCapture)window.stageCameraReview=([x,z],yaw)=>{
   avatar.root.rotation.y=current.yaw=yaw;
   current.pitch=cameraSettings.pitch;current.distance=cameraSettings.distance;
   Object.assign(view,current);
-  recentering.reset();
+  recentering.reset();coupledRig.reset(yaw);
   cameraClearance=null;
 };
 const reviewPoint=new THREE.Vector3();
@@ -253,28 +256,38 @@ function inspectCameraBody(){
   return {inFrame,lineOfSight};
 }
 const viewDirection=new THREE.Vector3();
-let previous=performance.now();
+let previous=performance.now(),reviewFrame=0;
 function animate(now){
   const timing=frameTiming(now,previous);const dt=timing.simulation;previous=now;clock+=dt;
   if(!manager.active)return;
   const blocked=manager.loading||modalOpen||mapOpen;
-  const [right,forward]=blocked?[0,0]:movementInput();
+  const [right,forward]=blocked?[0,0]:movementInput(inputs);
+  const coupled=usesCoupledRig();
+  const turn=coupled&&!blocked?coupledRig.step({right,forward,dt,yaw:view.yaw,
+    manualYaw:current.yaw,dragging:controls.isCameraDragging()}):null;
   const blend=-Math.expm1(-dt*cameraSettings.orbit);
-  view.yaw=advanceCameraYaw(view.yaw,current.yaw,dt,{rate:cameraSettings.orbit});
+  if(turn){
+    view.yaw=turn.cameraYaw;
+    if(!turn.manual)current.yaw=view.yaw;
+  }else if(!coupled)view.yaw=advanceCameraYaw(view.yaw,current.yaw,dt,{rate:cameraSettings.orbit});
   view.pitch+=(current.pitch-view.pitch)*blend;
   view.distance+=(current.distance-view.distance)*blend;
-  const commandYaw=recentering.movementYaw({right,forward,yaw:view.yaw});
+  const command=turn?.move??{right,forward,yaw:recentering.movementYaw({right,forward,yaw:view.yaw})};
+  const commandYaw=command.yaw;
   const running=inputs.keys.has('shift')||inputs.runTouch;
   const previousPosition=[avatar.root.position.x,avatar.root.position.z];
-  const motion=player.move(previousPosition,{right,forward,yaw:commandYaw,running,dt,canWalk:stats.canWalk});
+  const motion=player.move(previousPosition,{...command,running,dt,canWalk:stats.canWalk});
   if(finitePoint(motion.position))avatar.root.position.set(motion.position[0],0,motion.position[1]);
-  const recenteredYaw=blocked?null:recentering.update({
-    right,forward,heading:avatar.root.rotation.y,movementHeading:motion.heading,yaw:view.yaw,dt,elapsed:timing.real,
-  });
-  if(recenteredYaw!==null)current.yaw=view.yaw=recenteredYaw;
+  if(turn)avatar.root.rotation.y=turn.locomotionHeading;
+  if(!coupled){
+    const recenteredYaw=blocked?null:recentering.update({
+      right,forward,heading:avatar.root.rotation.y,movementHeading:motion.heading,yaw:view.yaw,dt,elapsed:timing.real,
+    });
+    if(recenteredYaw!==null)current.yaw=view.yaw=recenteredYaw;
+    if(motion.heading!==null)
+      avatar.root.rotation.y=advanceCameraYaw(avatar.root.rotation.y,motion.heading,dt,{rate:9});
+  }
   const cameraYaw=view.yaw;
-  if(motion.heading!==null)
-    avatar.root.rotation.y=advanceCameraYaw(avatar.root.rotation.y,motion.heading,dt,{rate:9});
   avatar.update(dt,motion.animationSpeed);
   speedPanel.update(motion.speed);
   stats.markerRoot?.userData.animate(clock);
@@ -299,16 +312,21 @@ function animate(now){
       angularFollow:recentering.target!==null&&recentering.rotation?.kind!=='shortcut',
       recentering:recentering.target!==null&&recentering.rotation?.kind!=='lateral',
       cameraFollowMode:recentering.mode,followState:recentering.phase,followTimeSeconds:recentering.clock,rotation:recentering.rotation};
+    if(turn)Object.assign(diagnostics,{frame:++reviewFrame,dt,speed:motion.speed,
+      locomotionHeading:turn.locomotionHeading,cameraTargetYaw:turn.targetYaw,manual:turn.manual,
+      angularFollow:!turn.manual,followState:turn.manual?'manual':'follow'});
     if(reviewCapture)diagnostics.obstruction.body=inspectCameraBody();
     if(debugPanel){
       const format=vector=>vector.map(value=>value.toFixed(2)).join(' / ');
+      const targetLine=turn?`Locomoção    ${turn.locomotionHeading.toFixed(2)} rad
+Alvo câmera  ${turn.targetYaw.toFixed(2)} rad`:`Comando yaw  ${commandYaw.toFixed(2)} rad`;
       debugPanel.textContent=`${document.documentElement.dataset.movementStage??flags.get('movement-scenario')??'Diagnóstico de movimento'}
 Entrada X/Y  ${format(diagnostics.input)}
 Yaw câmera   ${cameraYaw.toFixed(2)} rad
 Corpo        ${diagnostics.characterHeading.toFixed(2)} rad
 Dist. câmera ${cameraClearance.distance.toFixed(2)} m
 Obstrução    ${cameraClearance.diagnostics.state}
-Comando yaw  ${commandYaw.toFixed(2)} rad
+${targetLine}
 Direita/frente ${format(projected)} m/s
 Modo: ${recentering.mode} · ${diagnostics.followState}`;
     }

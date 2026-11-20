@@ -1,3 +1,4 @@
+import {evaluateCoupledCamera} from './coupled-camera-evaluation.mjs';
 import {evaluateAutomaticCamera} from './automatic-camera-evaluation.mjs';
 import {evaluateMovement} from './camera-evaluation.mjs';
 import {spawn,spawnSync} from 'node:child_process';
@@ -282,11 +283,19 @@ async function main(){
     checks.movement={status:movementTrace.status,report:'movement-diagnostics.json'};
     if(movementTrace.status!=='passed')issues.push({type:'movement-diagnostics-failed',
       message:'Consulte movement-diagnostics.json para os cenários que falharam.'});
-    const automaticCamera=await evaluateAutomaticCamera(browser,started.target,bundle,cameraEvaluation,Number(videoFps));
+    const automaticCamera=await evaluateAutomaticCamera(browser,started.target,bundle,false,Number(videoFps));
     checks.automaticCamera={status:automaticCamera.status,report:'automatic-camera-diagnostics.json'};
     if(automaticCamera.status!=='passed')issues.push({type:'automatic-camera-failed',
       message:'Consulte automatic-camera-diagnostics.json para os cenários que falharam.'});
-    const videos=[...movementTrace.videos,...automaticCamera.videos];
+    const coupledPrototype=await evaluateCoupledCamera(browser,started.target,bundle,{prototype:true});
+    checks.coupledPrototype={status:coupledPrototype.status,report:'coupled-camera-diagnostics.json'};
+    if(coupledPrototype.status!=='passed')issues.push({type:'coupled-prototype-failed',
+      message:'Consulte os cenários do protótipo em coupled-camera-diagnostics.json.'});
+    const coupledCamera=await evaluateCoupledCamera(browser,started.target,bundle,{video:cameraEvaluation,fps:Number(videoFps)});
+    checks.coupledCamera={status:coupledCamera.status,report:'coupled-camera-diagnostics.json'};
+    if(coupledCamera.status!=='passed')issues.push({type:'coupled-camera-failed',
+      message:'Consulte coupled-camera-diagnostics.json para os cenários que falharam.'});
+    const videos=[...movementTrace.videos,...coupledCamera.videos];
     abort.signal.throwIfAborted();
     geography.git=git;
     const browserInfo={engine:'chromium',version:browser.version(),headless:true};
@@ -304,7 +313,7 @@ async function main(){
       reproducibility:{animationTimeSeconds:0,lighting:'Iluminação fixa da cena, sem relógio de dia.',
         proceduralSeedPolicy:'Sementes fixas definidas no gerador versionado pelo commit Git.'},
       viewport,resolution:viewport,captures,geographicEvidence:geographicFiles,
-      video:cameraEvaluation?{status:movementTrace.status==='passed'&&automaticCamera.status==='passed'?'validated':'failed',files:videos,encodingFps:Number(videoFps)}
+      video:cameraEvaluation?{status:movementTrace.status==='passed'&&automaticCamera.status==='passed'&&coupledPrototype.status==='passed'&&coupledCamera.status==='passed'?'validated':'failed',files:videos,encodingFps:Number(videoFps)}
         :{status:'not-generated',reason:'Use --camera-evaluation para gravar os clipes.'}};
     const performance={schemaVersion:2,runtime,environment:'Navegador automatizado. Os resultados não equivalem ao desempenho em dispositivos móveis reais.',
       method:'Intervalo bruto entre requestAnimationFrame. 15 intervalos de aquecimento e 75 amostras por vista estática.',
@@ -314,7 +323,8 @@ async function main(){
 
     await json('movement-diagnostics.json',movementTrace);
     await json('automatic-camera-diagnostics.json',automaticCamera);
-    const movementFiles=['movement-diagnostics.json','automatic-camera-diagnostics.json',...videos];
+    await json('coupled-camera-diagnostics.json',{...coupledCamera,prototype:coupledPrototype});
+    const movementFiles=['movement-diagnostics.json','automatic-camera-diagnostics.json','coupled-camera-diagnostics.json',...videos];
 
     const imageFiles=[...geographicFiles.filter(file=>file.endsWith('.png')),...captures.flatMap(capture=>capture.file?[capture.file]:[])];
     const current={metadata,performance,readImage:file=>readFile(join(bundle,file))};

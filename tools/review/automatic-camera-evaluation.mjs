@@ -18,7 +18,7 @@ async function evaluate(browser,server,bundle,mobile,record,fps){
   let recording;
   try{
     await page.route('https://fonts.googleapis.com/**',route=>route.fulfill({contentType:'text/css',body:''}));
-    await page.goto(new URL('/?review=1&movement-debug=1',server).href);
+    await page.goto(new URL('/?review=1&camera-follow=assisted-auto&movement-debug=1',server).href);
     await page.waitForSelector('#game canvas[data-review-pose]');
     const {dispatch,stick}=await enterHighPark(page,context,mobile);
     const data=()=>page.locator('#game canvas').evaluate(el=>JSON.parse(el.dataset.reviewPose).movement);
@@ -205,7 +205,7 @@ export async function evaluateAutomaticCamera(browser,server,bundle,record,fps){
     scenarios.push(result);
   }
   return {status:scenarios.every(s=>s.status==='passed')?'passed':'failed',
-    settings:{mode:cameraSettings.cameraFollowMode,autoRecenterDelay:cameraSettings.autoRecenterDelay,
+    settings:{mode:'assisted-auto',autoRecenterDelay:cameraSettings.autoRecenterDelay,
       manualOverrideDelay:cameraSettings.manualOverrideDelay,lateralLimitDegrees:cameraSettings.lateralFollowMaxAngle*180/Math.PI},
     scenarios,videos:scenarios.flatMap(s=>s.video?[s.video]:[])};
 }

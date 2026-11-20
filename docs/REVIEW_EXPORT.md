@@ -155,9 +155,9 @@ joystick à direita e na diagonal. Cada clipe inclui a recentralização
 e o teste de interrupção manual. O diagnóstico também registra a troca
 de W+D para W, a liberação do joystick e a posição durante a
 recentralização. O botão de câmera no cabeçalho mobile equivale a C.
-Em Ajuda, alterne entre Automático (padrão) e Estável. O modo Automático
-limita o giro a 15° durante entrada lateral sustentada, espera 0,4 s
-após a liberação lateral e espera 1,5 s após o último gesto manual.
+Em Ajuda, alterne entre Terceira pessoa com curvas (padrão) e Estável.
+O export preserva o modo Automático da v4 como cenário de regressão
+em desenvolvimento.
 
 Na v3.2, a gravação usa screenshots JPEG do viewport completo em 390 ×
 844, codificados em WebM. O export confere as dimensões do viewport
@@ -191,12 +191,10 @@ movimento exigem rastros de recentralização concluída e interrompida
 para passar.
 
 
-Com `--camera-evaluation`, o export inclui dois clipes adicionais do modo
-Automático em WebM. O desktop usa 1280 × 720 e o mobile usa 390 × 844,
-ambos a 24 FPS por padrão. As sequências usam o teclado e eventos touch
-do Chromium em uma rota reproduzível do High Park.
+O comportamento do modo Automático da v4 é registrado para regressão em
+`automatic-camera-diagnostics.json`.
 
-O arquivo `automatic-camera-diagnostics.json` registra input, yaw
+O diagnóstico da v4 registra input, yaw
 renderizado, referência de movimento, heading da personagem, estados da
 câmera, tempos e resultados das rotações e erro de velocidade por trecho.
 A referência de movimento é capturada no início do comando e mantida
@@ -204,3 +202,14 @@ até soltá-lo. O mouse e o gesto touch podem atualizar a referência.
 O acompanhamento automático usa a direção do deslocamento executado
 com essa referência fixa. Os 15° são um limite de enquadramento durante
 a entrada lateral, inclusive quando ela muda de diagonal para lateral.
+
+
+O modo de curvas tem duas gravações com `--camera-evaluation`. O clipe
+`coupled-camera-desktop.webm` usa 1280 × 720 e
+`coupled-camera-mobile.webm` usa 390 × 844, ambos a 24 FPS por padrão.
+`coupled-camera-diagnostics.json` contém séries por frame do protótipo
+isolado e do High Park, com input, heading, yaw alvo e real, velocidades
+angulares e erro angular. Cada curva só passa se os quatro ângulos
+começarem a mudar no mesmo frame em que a entrada horizontal é aplicada.
+A semântica de direção e o endereço local do protótipo estão em
+[THIRD_PERSON_RIG.md](THIRD_PERSON_RIG.md).

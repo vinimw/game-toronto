@@ -75,5 +75,14 @@ export function bindGameControls({canvas, joystick, stick, runButton, inputs, ca
   for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) listen(runButton, type, e => {
     if (runPointer === e.pointerId) { runPointer = null; inputs.runTouch = false; }
   });
-  return {reset};
+  return {reset,isCameraDragging:()=>cameraPointer!==null};
+}
+
+
+export function movementInput(inputs){
+  const {keys,joystickX,joystickY}=inputs;
+  return [
+    Number(keys.has('d')||keys.has('arrowright'))-Number(keys.has('a')||keys.has('arrowleft'))+joystickX,
+    Number(keys.has('w')||keys.has('arrowup'))-Number(keys.has('s')||keys.has('arrowdown'))+joystickY,
+  ];
 }
