@@ -152,14 +152,14 @@ export function buildWorld(scene,world,portals=[],evidence){
   const setDetailFocus=real?(x,z)=>{
     detailFocus=[x,z];
     if(hill){
-      const near=Number.isFinite(x)&&Math.hypot(x+201,z-785)<(atHill?215:180);
+      const near=Number.isFinite(x)&&z>(atHill?145:185);
       if(near!==atHill){
         atHill=near;
         if(near)hillSky??=cherrySky();
         scene.background=near?hillSky:originalAtmosphere.background;
         scene.fog.color.set(near?0xc9d6d9:style.sky);
         scene.fog.near=near?125:originalAtmosphere.near;
-        scene.fog.far=near?490:originalAtmosphere.far;
+        scene.fog.far=near?620:originalAtmosphere.far;
       }
     }
     vegetation.setDetailFocus?.(x,z);

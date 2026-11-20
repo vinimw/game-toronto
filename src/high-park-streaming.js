@@ -1,3 +1,4 @@
+import {buildNorthernSports} from './park-sports.js';
 import {assetUrl} from './asset-url.js';
 import * as THREE from 'three';
 import {terrainSectors} from './high-park-terrain.js';
@@ -271,6 +272,16 @@ export function highParkStreaming(scene,world,sun,style,paths,activateEntrance,b
       return {mount(){garden=art;gardenTick=undefined;scene.add(art.root);},
         buildMs:performance.now()-start,estimatedGeometryBytes:estimatedGeometry(art.root),
         dispose(){garden=null;art.root.removeFromParent();disposeScene(art.root);}};
+    },
+  });
+  if(world.dataset==='high-park-expanded')manifests.push({
+    id:'high-park:northern-sports',bounds:[-230,155,81,454],loadRadius:105,keepRadius:218,lane:'sports',
+    lods:['high','balanced','low'],assets:{source:'OSM pitches and procedural sport markings',shared:[]},
+    async load(signal,frame){
+      await frame();signal.throwIfAborted();
+      const group=buildNorthernSports(world);
+      return {mount(){scene.add(group);},estimatedGeometryBytes:estimatedGeometry(group),
+        dispose(){group.removeFromParent();disposeScene(group);}};
     },
   });
   const stream=new WorldStreaming(manifests);
