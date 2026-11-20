@@ -6,6 +6,13 @@ import {startViewportVideo} from './full-viewport-video.mjs';
 
 const waitLod=(page,lod)=>page.waitForFunction(lod=>window.inspectWorldStreaming().cherryHill.lod===lod,lod,{timeout:12000});
 const stats=page=>page.evaluate(()=>window.inspectWorldStreaming());
+// GLBs are shared with the west grove. Verify local sector release even if
+// another grove still holds a lease on the same decoded model.
+function assertHillReleased(snapshot){
+  const sectors=snapshot.sectors.filter(sector=>sector.id.startsWith('high-park:cherry-hill:'));
+  assert.ok(sectors.length>0);
+  assert.ok(sectors.every(sector=>['idle','base'].includes(sector.state)&&sector.estimatedGeometryBytes===0));
+}
 
 async function verifyMobile(browser,target){
   const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,reducedMotion:'reduce'});
@@ -26,7 +33,7 @@ async function verifyMobile(browser,target){
     assert.ok(end[2]-start[2]>2);
     await page.evaluate(()=>window.stageCameraReview([-22,-105],Math.PI));
     await waitLod(page,null);
-    assert.equal((await stats(page)).cherryHill.assets.decodedActive,0);
+    assertHillReleased(await stats(page));
     return {arrived,start,end};
   }finally{await context.close();}
 }
@@ -114,7 +121,7 @@ export async function evaluateCherryHill(browser,target,bundle,safeMessage){
     assert.ok(legs[3].samples.some(sample=>sample.lod==='high'&&sample.coverage>.99),'Detalhe não recuperado no retorno.');
     assert.deepEqual(legs.flatMap(leg=>leg.jumps),[],'Uma camada de árvores surgiu ou desapareceu abruptamente.');
     assert.ok(arrived.cherryHill.trees>=10);
-    assert.equal(unloaded.cherryHill.assets.decodedActive,0);
+    assertHillReleased(unloaded);
     assert.equal(returned.cherryHill.assets.downloads,arrived.cherryHill.assets.downloads);
     assert.deepEqual(errors,[]);
     const video='cherry-hill-approach.webm';
