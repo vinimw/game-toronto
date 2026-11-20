@@ -2,7 +2,7 @@
 
 Protótipo jogável de exploração romântica em terceira pessoa, com visual low-poly estilizado e foco em desktop + celular.
 
-**Status:** prova de conceito. Há uma **cena demonstrativa ilustrativa** incluída para testar controles sem conexão com serviços geográficos. Para gerar **ruas, caminhos, edifícios e lagos com geometria real do OpenStreetMap**, execute o importador (instruções abaixo). Não confundir o cenário demonstrativo com um mapa fiel.
+**Status:** prova de conceito. Toronto é demonstrativa. O High Park inclui um recorte OSM de aproximadamente 400 × 400 m na entrada norte, com terreno plano e arte estilizada.
 
 ## Executar no Mac / PC
 
@@ -13,25 +13,24 @@ npm install
 npm run dev
 ```
 
-Abra `http://localhost:5173`. O jogo abre no **modo de demonstração** caso não haja um arquivo OSM importado. O app não depende da API geográfica durante a execução, somente durante a importação.
+Abra `http://localhost:5173`. O jogo começa em **Toronto DEMO**. Entre no
+High Park pelo portal. O rodapé exibe **OSM REAL** ao carregar o recorte e
+**DEMO** se precisar usar o cenário ilustrativo. Para escolher a versão
+ilustrativa, abra o jogo com `?map=demo`.
 
-## Importar geometria real de High Park
-
-Em um terminal separado (precisa de internet):
+## Reproduzir o recorte da entrada norte
 
 ```bash
 npm run map:import
 ```
 
-O script faz uma consulta na Overpass API e grava `public/data/high-park.osm.json`. Reinicie/recarregue a página. O rodapé deverá exibir **MAPA OSM IMPORTADO**. A importação deve ser feita esporadicamente; não faça consultas contínuas à API pública. Se o serviço estiver instável, o script tenta endpoints alternativos e retorna um erro sem sobrescrever o arquivo anterior.
-
-**Área padrão:** norte/centro do High Park, um recorte do parque e seu entorno — não toda Toronto. Para mudar o recorte:
-
-```bash
-python3 tools/import_osm.py --bbox 43.645 -79.473 43.654 -79.456
-```
-
-Ordem: `sul oeste norte leste`. Recortes maiores têm custo de renderização e podem ser inadequados no celular; compare FPS no protótipo.
+O comando lê a [resposta arquivada da API OSM](tools/data/high-park-north.osm-source.json)
+e grava `public/data/high-park.osm.json` sem rede. O recorte cobre Bloor Street West,
+a calçada da entrada norte e o High Park Nature Centre. A extensão exata em ordem
+sul, oeste, norte, leste é `43.65055, -79.467485, 43.65415, -79.462515`.
+Os elementos de origem mantêm seus IDs e coordenadas WGS84 no arquivo arquivado.
+A cena usa metros locais (X leste, Z sul), com recorte nas bordas. Consulte
+[proveniência, verificação e limitações](docs/HIGH_PARK_OSM.md).
 
 ### Controles
 
@@ -46,7 +45,7 @@ As memórias descobertas são persistidas em `localStorage` do navegador (soment
 ## O que funciona
 
 - Câmera orbital suave em terceira pessoa e personagem feminino low-poly com animação procedural de caminhada.
-- Mapa local com caminhos, edifícios, água e vegetação (ilustrativo por padrão; geometria real após importação).
+- Mapa local com caminhos, edifícios e áreas verdes do OSM na entrada norte e vegetação decorativa procedural.
 - Gerador de árvores via `InstancedMesh` para reduzir draw calls.
 - Deslocamento WASD/joystick e correr, bloqueios básicos em prédios/água; zoom e rotação da câmera.
 - Um marcador de memória com interação, carta demonstrativa, 3 espaços para fotos e álbum persistido.
@@ -74,10 +73,10 @@ src/
   geo.js             projeção local, nearest path, polígonos
   styles.css         interface desktop/mobile
 public/data/
-  high-park.osm.json  gerado pelo importador; ausente até executar
+  high-park.osm.json  recorte OSM da entrada norte, gerado pelo importador
 
 tools/
-  import_osm.py      Overpass -> geometrias locais simplificadas
+  import_osm.py      resposta arquivada OSM → coordenadas locais e recorte
   test_import_osm.py testes offline do importador
 ```
 
@@ -86,7 +85,7 @@ O projeto foi mantido **vanilla Three.js + Vite**, sem framework de interface po
 ## Validação mínima
 
 ```bash
-npm run check:importer
+npm test
 npm run build
 ```
 
@@ -94,4 +93,31 @@ Em desktop e em celular na **mesma rede Wi-Fi**, acesse o endereço IP do comput
 
 ## Dados, crédito e licenças
 
-O importador usa a [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) para obter informações do [OpenStreetMap](https://www.openstreetmap.org/copyright). **© OpenStreetMap contributors**, dados disponíveis conforme ODbL 1.0. A atribuição é apresentada no jogo no modo OSM. Se redistribuir dados adaptados, verifique suas obrigações segundo a ODbL. Nenhum dado/asset do Google Maps é copiado. O código deste protótipo é original e não reproduz assets do Summer Afternoon, usado apenas como referência de direção artística.
+O importador usa uma resposta arquivada da API do [OpenStreetMap](https://www.openstreetmap.org/copyright). **© OpenStreetMap contributors**, dados disponíveis conforme ODbL 1.0. A atribuição é apresentada no jogo no modo OSM. Se redistribuir dados adaptados, verifique suas obrigações segundo a ODbL. Nenhum dado/asset do Google Maps é copiado. O código deste protótipo é original e não reproduz assets do Summer Afternoon, usado apenas como referência de direção artística.
+
+## Estabilização do protótipo
+
+As correções, validações executadas, limitações de hardware e pendências de segurança estão em [Stage 1 — Validation](docs/STAGE_1_VALIDATION.md).
+
+## Regiões e transições
+
+O jogo começa em uma pequena cena **Toronto demonstrativa**. Aproxime-se do portal
+para **Entrar no High Park** com `E` ou pelo botão na tela; a saída do parque permite
+**Voltar a Toronto**. O mesmo personagem e progresso acompanham as transições.
+High Park usa o snapshot OSM quando disponível e a cena ilustrativa existente como
+fallback. Veja o [manifesto, ciclo de vida e validação das cenas](docs/REGION_SCENES.md).
+
+Para evitar conflito com outros projetos na porta padrão:
+
+```bash
+npm run dev -- --port 5175 --strictPort
+```
+
+## Pacote para revisão externa
+
+Execute `npm run review:export` para gerar as capturas e os relatórios em
+`artifacts/reviews/game-love-review.zip`. Veja [instalação, pontos de captura
+e solução de problemas](docs/REVIEW_EXPORT.md).
+
+A publicação estática usa GitHub Actions e aceita o nome do repositório
+por configuração. Consulte [GitHub Pages](docs/GITHUB_PAGES.md).

@@ -5,34 +5,66 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no"/>
   <meta name="theme-color" content="#e9e1cb" />
   <meta name="description" content="Game Love — um passeio de descobertas por Toronto"/>
-  <title>Game Love · High Park</title>
+  <title>Game Love · Toronto</title>
 </head>
 <body>
   <main id="app">
-    <div id="game" aria-label="Cenário tridimensional de High Park"></div>
+    <div id="game" aria-label="Cenário tridimensional de Toronto"></div>
     <header class="topbar">
-      <div class="brand"><span class="brand-heart">♥</span><div><span class="brand-name">GAME LOVE</span><span class="brand-sub">TORONTO · HIGH PARK</span></div></div>
+      <div class="brand"><span class="brand-heart">♥</span><div><span class="brand-name">GAME LOVE</span><span id="brand-region" class="brand-sub">TORONTO · DEMONSTRAÇÃO</span></div></div>
       <div class="header-actions">
+        <button id="btn-recenter" class="small-button" type="button" aria-label="Recentralizar câmera">
+          <span aria-hidden="true">📷</span>
+        </button>
         <button id="btn-help" class="small-button" aria-label="Ajuda">?</button>
-        <button id="btn-map" class="small-button" aria-label="Mostrar mapa">⌖ <span class="desktop-only">Mapa</span></button>
+        <button id="btn-map" class="small-button" aria-controls="map-panel" aria-expanded="false" aria-label="Mostrar mapa">⌖ <span class="desktop-only">Mapa</span></button>
         <button id="btn-album" class="small-button album-button" aria-label="Abrir álbum">♡ <span class="desktop-only">Memórias</span> <span id="album-count">0/1</span></button>
       </div>
     </header>
     <div class="scene-tag"><span class="sun-icon">✺</span> UMA TARDE EM TORONTO</div>
-    <section id="mission-card" class="mission-card" aria-live="polite">
-      <p class="eyebrow">01 / SUA PRIMEIRA MISSÃO</p>
-      <h1 id="mission-title">Uma pequena descoberta</h1>
-      <p id="mission-desc">Caminhe pelo parque e procure o ponto luminoso entre as árvores.</p>
-      <span id="mission-state" class="mission-state">◌ EM ANDAMENTO</span>
+    <section id="mission-card" class="mission-card hidden" aria-label="Missão">
+      <button id="mission-toggle" type="button" aria-controls="mission-details" aria-expanded="false">
+        <span id="mission-short">Uma descoberta</span><span id="mission-progress" aria-label="0 de 1 memórias">0/1</span>
+        <span class="mission-chevron" aria-hidden="true">⌄</span>
+      </button>
+      <div id="mission-details">
+        <h1 id="mission-title">Uma pequena descoberta</h1>
+        <p id="mission-desc">Procure um brilho discreto no caminho perto do Nature Centre.</p>
+        <span id="mission-state" class="mission-state" role="status">◌ EM ANDAMENTO</span>
+      </div>
     </section>
     <div class="compass" id="compass">N</div>
     <div class="side-rail"><span class="rail-label">EXPLORAR · DESCOBRIR · LEMBRAR</span></div>
     <div id="action-wrap" class="action-wrap hidden"><button id="action-btn" class="action-btn"><span class="action-key">E</span><span id="action-label">Descobrir memória</span></button></div>
-    <div class="bottom-left"><div class="place-label"><span class="place-dot"></span><div><strong id="place-name">High Park, Toronto</strong><small id="position-text">Explorando...</small></div></div></div>
+    <div class="bottom-left"><div class="place-label"><span class="place-dot"></span><div><strong id="place-name">Toronto</strong><small id="position-text">Explorando...</small></div></div></div>
     <div id="mobile-controls" class="mobile-controls"><div class="joystick" id="joystick"><div id="stick" class="joystick-stick"></div></div><button id="mobile-run" class="run-button" aria-label="Correr">↟</button></div>
-    <footer class="footer-bar"><span id="data-status">Carregando cenário...</span><span id="performance">— FPS</span><span class="desktop-only">WASD mover · Mouse olhar · Shift correr · E interagir · M mapa · I álbum</span></footer>
+    <footer class="footer-bar"><span id="data-status" aria-live="polite">Carregando cenário...</span><a id="osm-attribution" class="hidden" href="https://www.openstreetmap.org/copyright">© OpenStreetMap</a><span id="performance">— FPS</span><span class="desktop-only">WASD mover · Mouse olhar · Shift correr · E interagir · M mapa · I álbum</span></footer>
     <div id="modal-layer" class="modal-layer hidden"><div class="modal-backdrop" id="modal-backdrop"></div><section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title"><button id="modal-close" class="close-button" aria-label="Fechar">×</button><div id="modal-content"></div></section></div>
-    <section id="map-panel" class="map-panel hidden"><div class="map-heading"><div><p class="eyebrow">MAPA LOCAL</p><h2>High Park</h2></div><button id="close-map" class="close-button">×</button></div><canvas id="map-canvas" width="540" height="400"></canvas><div class="map-key"><span><i class="key-dot player"></i> Você</span><span><i class="key-dot memory"></i> Memória</span><span><i class="key-dot road"></i> Caminhos</span></div><p id="map-note" class="map-note">Mapa ilustrativo</p></section>
+    <div id="map-backdrop" class="map-backdrop hidden" aria-hidden="true"></div>
+    <section id="map-panel" class="map-panel hidden" role="dialog" aria-modal="true" aria-labelledby="map-title">
+      <div class="map-heading"><h2 id="map-title">Toronto</h2><button id="close-map" class="close-button" type="button" aria-label="Fechar mapa">×</button></div>
+      <canvas id="map-canvas" width="540" height="400" role="img" aria-label="Mapa local, norte para cima" aria-describedby="map-note"></canvas>
+      <div class="map-info">
+        <div class="map-key"><span><i class="key-dot player"></i> Você</span><span><i class="key-dot memory"></i> Memória conhecida</span><span><i class="key-dot road"></i> Caminhos</span><span><i class="key-dot portal"></i> Entrada/saída</span></div>
+        <p id="map-note" class="map-note">Mapa ilustrativo</p>
+      </div>
+    </section>
+    <aside id="speed-panel" class="speed-panel" aria-label="Controle de velocidade para testes">
+      <button class="speed-header" type="button" data-toggle aria-controls="speed-panel-body" aria-expanded="true" aria-label="Minimizar controle de velocidade">
+        <span><strong>Velocidade <span data-multiplier>1×</span></strong><output class="speed-actual" data-actual>Atual: 0,0 un/s</output></span>
+        <span class="speed-chevron" data-chevron aria-hidden="true">⌃</span>
+      </button>
+      <div id="speed-panel-body" data-body>
+        <label for="speed-slider">Multiplicador de teste</label>
+        <input id="speed-slider" type="range" min="1" max="5" step="0.5" value="1" />
+        <div class="speed-buttons"><button type="button" data-minus aria-label="Diminuir velocidade">−</button><button type="button" data-normal aria-label="Voltar à velocidade normal (1×)"><span class="desktop-only">Normal </span>1×</button><button type="button" data-plus aria-label="Aumentar velocidade">+</button></div>
+        <p data-configured></p>
+      </div>
+    </aside>
+    <div id="scene-transition" class="scene-transition hidden"><div class="transition-content">
+      <div role="status" aria-live="polite"><strong id="transition-label">Carregando Toronto…</strong><span id="transition-stage"></span><small id="transition-bytes"></small></div>
+      <button id="transition-retry" class="close-button" type="button" hidden>Tentar novamente</button>
+    </div></div>
     <div id="toast" class="toast hidden" role="status"></div>
   </main>
   <script type="module" src="/src/main.js"></script>

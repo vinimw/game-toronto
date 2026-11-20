@@ -1,0 +1,87 @@
+// All positions are in scene-local metres (X east, Z south). The curated demo
+// viewpoints are specific to that geometry and are never reused in OSM mode.
+export const points=[
+  {id:'01-toronto-inicial',region:'toronto',entry:'start',label:'Toronto · visão inicial',
+    location:'spawn',eye:[0,3.075,6.816],look:[0,1.48,0],heading:0},
+  {id:'02-entrada-externa',region:'toronto',entry:'start',label:'Entrada externa do High Park',
+    location:'portal',portal:'toronto:high-park-gate',offset:[1,5.8],eye:[3,2.9,6],look:[-.6,1.65,-3.7],heading:.17},
+  {id:'03-high-park-trilha',region:'high-park',entry:'toronto-gate',label:'High Park · caminho principal',
+    mode:'demo',osm:{geo:[43.6528460,-79.4653253],feature:174188399,eye:[0,3.075,-6.816],look:[0,1.48,3],heading:Math.PI},position:[26,32.5],eye:[-6.2,3.55,-2.1],look:[2,1.48,.5],heading:-1.85},
+  {id:'04-high-park-vegetacao',region:'high-park',entry:'toronto-gate',label:'High Park · vegetação e iluminação',
+    mode:'demo',osm:{geo:[43.6520004,-79.4658145],eye:[4.5,3.8,-5.3],look:[-4,1.4,4],heading:2.6},position:[76,51.55],eye:[-6,4.4,-2.5],look:[5,1.25,3],heading:-2.1},
+  {id:'05-high-park-cafe',osmFile:'05-high-park-nature-centre',region:'high-park',entry:'toronto-gate',label:'High Park · Café do Parque',
+    mode:'demo',osm:{label:'High Park · Nature Centre',geo:[43.65121535,-79.46405093],feature:43805272,eye:[-7,3.8,-1.8],look:[12,2.4,1],heading:-Math.PI/2},visual:'park-cafe',position:[56,113],eye:[-7.3,4.4,-3.2],look:[6,2.15,1.5],heading:-Math.PI/2},
+  {id:'06-high-park-ortografica',region:'high-park',entry:'toronto-gate',label:'High Park · ortográfica norte para cima',
+    location:'spawn',projection:'orthographic',heading:0},
+];
+
+const parkPoint=(id,label,reference,eye,look,profile='desktop')=>({
+  id,label,region:'high-park',entry:'toronto-gate',mode:'osm',heading:reference.heading,profile,
+  osm:{...reference.osm,label,eye,look},
+});
+
+points.push(
+  parkPoint('09-high-park-vegetacao-detalhe','High Park · detalhe da vegetação',points[3],
+    [-8.5,1.45,-.05],[-10.7,.5,5]),
+  parkPoint('10-high-park-trilha-detalhe','High Park · borda da trilha',points[3],
+    [2.5,1.15,0],[-.6,.05,3.8]),
+  parkPoint('11-high-park-nature-centre-detalhe','High Park · detalhe do Nature Centre',points[4],
+    [1,2.9,-1.7],[14,2.2,-1]),
+  parkPoint('12-high-park-trilha-mobile','High Park · trilha em viewport mobile',points[2],
+    points[2].osm.eye,points[2].osm.look,'mobile'),
+  parkPoint('13-high-park-nature-centre-mobile','High Park · Nature Centre em viewport mobile',points[4],
+    [-10,4,-2],[12,2.3,0],'mobile'),
+  parkPoint('22-high-park-nature-centre-mobile-375','High Park · Nature Centre em 375 × 667',points[4],
+    [-10,4,-2],[12,2.3,0],'mobileCompact'),
+);
+
+const sakuraView=(id,label,local,eye,look,profile='desktop')=>{
+  // Measured in the source snapshot's projected metres. Store the review pose
+  // in WGS84 so it remains stable even if a later snapshot shifts the origin.
+  const origin=[43.65235,-79.465];
+  const geo=[origin[0]-local[1]/111320,origin[1]+local[0]/(111320*Math.cos(origin[0]*Math.PI/180))];
+  return {id,label,region:'high-park',entry:'toronto-gate',mode:'osm',profile,
+    osm:{geo,feature:174188399,eye,look,heading:2.55}};
+};
+points.push(
+  sakuraView('33-high-park-west-road-sakura','West Road · aproximação pela calçada',[-61.5,32],
+    [3.8,3.25,-6.5],[-13,2.8,14]),
+  sakuraView('34-high-park-sakura-petalas','West Road · copa, ramos e pétalas',[-68.5,34],
+    [5.6,2.05,-4.4],[-6.5,2.55,1.6]),
+  sakuraView('35-high-park-sakura-mobile','West Road · floração em viewport mobile',[-67,31.5],
+    [10.3,3.35,-6.4],[-5.3,2.85,4],'mobile'),
+);
+
+function terrainView(id,label,[x,z],feature,eye,look,profile='desktop'){
+  const lat=43.65235,lon=-79.465;
+  return {id,label,region:'high-park',entry:'toronto-gate',profile,expanded:true,
+    osm:{geo:[lat-z/111320,lon+x/(111320*Math.cos(lat*Math.PI/180))],feature,eye,look,heading:Math.PI}};
+}
+points.push(
+  terrainView('36-expanded-north-entry','Prévia geográfica · entrada norte',[-22,-105],174188399,[0,3.8,-8],[0,1.5,11]),
+  terrainView('37-expanded-sports','Prévia geográfica · área esportiva',[-92,345],14344509,[19,31,-29],[-44,0,15]),
+  terrainView('38-expanded-tennis','Prévia geográfica · área das quadras', [60,176],1116261446,[-8,15,-17],[9,0,16]),
+  terrainView('39-expanded-west-road','Prévia geográfica · West Road',[-65.33,38.51],14344426,[2,5,-10],[-12,1.8,20]),
+  terrainView('40-expanded-cherry-hill','Prévia geográfica · Cherry Hill',[-167.65,729.83],871510614,[9,6,-13],[-36,0,43]),
+  terrainView('41-expanded-pond','Prévia geográfica · Grenadier Pond',[-173,1050],174225267,[1,6,-12],[-88,0,8]),
+  terrainView('42-expanded-hillside','Prévia geográfica · Hillside Gardens e Maple Leaf',[-123,1017],251569209,[22,23,-18],[-24,0,9]),
+  {...terrainView('43-expanded-overview','Prévia geográfica · parque ampliado ↑ N',[-22,-105],14344414,[0,0,0],[0,0,0]),projection:'orthographic'},
+  terrainView('44-expanded-pond-mobile','Prévia geográfica · Grenadier Pond mobile',[-173,1050],174225267,[1,5,-9],[-52,0,10],'mobile'),
+  terrainView('45-expanded-north-mobile','Prévia geográfica · entrada norte mobile',[-22,-105],174188399,[0,3.8,-8],[0,1.5,11],'mobile'),
+);
+
+const entranceView=(id,label,local,eye,look,profile='desktop')=>terrainView(id,label,local,23661349,eye,look,profile);
+const gateFront=entranceView('47-north-entrance-after','Entrada norte · arco e pilares',[-15,-114],[-5,2.85,-24],[-1.7,3.0,-4.6]);
+points.push(
+  {...gateFront,id:'46-north-entrance-before',label:'Entrada norte · referência anterior',legacyEntrance:true},
+  gateFront,
+  entranceView('48-north-entrance-from-park','Entrada norte · vista de dentro do parque',[-15,-114],[0,2.85,17],[-2.0,3.2,-5.0]),
+  entranceView('49-north-pbr-detail','Entrada norte · cantaria, concreto e junta',[-29,-110],[1.4,1.42,1.9],[5.6,1.52,-6.7]),
+  entranceView('50-north-path-edge','Entrada norte · trilha e borda',[-20,-105],[-3.9,2.05,2],[-1.8,1.3,-8]),
+  entranceView('51-north-entrance-mobile','Entrada norte · composição mobile',[-15,-114],[-5,2.95,-31],[-1.7,3.0,-4.6],'mobile'),
+  entranceView('52-north-area-aerial','Entrada norte · visão aérea oblíqua',[-16,-115],[-5,37,-35],[-2,0,14]),
+  {...entranceView('54-north-tree-before','Entrada norte · árvores anteriores',[-23,-100],[-8,2.7,-16],[-12,7,1]),legacyEntrance:true},
+  entranceView('55-north-tree-after','Entrada norte · árvores novas',[-23,-100],[-8,2.7,-16],[-12,7,1]),
+);
+points.push({...points.find(point=>point.id==='51-north-entrance-mobile'),
+  id:'53-north-entrance-mobile-before',label:'Entrada norte · mobile anterior',legacyEntrance:true});

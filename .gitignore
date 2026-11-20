@@ -43,3 +43,6 @@ venv/
 ._*
 Thumbs.db
 Desktop.ini
+
+# Local review exports
+/artifacts/reviews/

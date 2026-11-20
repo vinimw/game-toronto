@@ -10,3 +10,4 @@
 - Prefer conventional commits and small feature branches. Avoid adding arbitrary npm dependencies.
 - When adding new regions, keep geographic coordinates out of runtime mesh calculation when possible; convert to a local projected coordinate space during import.
 - For every large rendering change, measure FPS on a real mobile device before expanding the map.
+- Preserve reference-grounded visual fidelity in high-priority areas. Compare matched desktop and mobile views against the documented site reference before accepting changes to architecture, foliage, materials or lighting.

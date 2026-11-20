@@ -18,7 +18,7 @@ export function makeDemoWorld() {
     path('Entrada do parque (ilustrativa)','footway',[[34,-170],[35,-132],[17,-95],[12,-42],[0,0]]),
     building('Casa ilustrativa 01',pts([80,-195],[110,-195],[110,-171],[80,-171],[80,-195]),3),
     building('Casa ilustrativa 02',pts([117,-195],[146,-195],[146,-172],[117,-172],[117,-195]),2),
-    building('Café demonstrativo',pts([63,104],[87,104],[87,125],[63,125],[63,104]),1),
+    {...building('Café demonstrativo',pts([63,104],[87,104],[87,125],[63,125],[63,104]),1),visual:'park-cafe'},
     building('Casa ilustrativa 03',pts([-197,180],[-169,180],[-169,202],[-197,202],[-197,180]),2),
     building('Casa ilustrativa 04',pts([-161,180],[-131,180],[-131,201],[-161,201],[-161,180]),3),
     building('Casa ilustrativa 05',pts([-121,180],[-95,180],[-95,201],[-121,201],[-121,180]),2),

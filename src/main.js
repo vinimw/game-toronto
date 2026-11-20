@@ -1,136 +1,429 @@
+import {ThirdPersonRig} from './third-person-rig.js';
 import * as THREE from 'three';
 import './styles.css';
-import {loadWorld} from './map-loader.js';
+import './mobile-hud.css';
+import './memory.css';
+import {SceneManager} from './scene-manager.js';
+import {regionManifest} from './regions.js';
+import {loadRegion} from './scenes/load-region.js';
+import {createGameState} from './game-state.js';
+import {memories,nearbyMemory} from './memories.js';
+import {albumMarkup,memoryMarkup,showPhotoFallbacks} from './memory-ui.js';
+import {cameraSettings,qualityProfiles} from './visual-settings.js';
+import {resolveGameplayCamera} from './park-camera.js';
 import {buildWorld} from './world.js';
 import {createCharacter} from './character.js';
+import {finitePoint, resolveCamera, frameTiming, frameMetrics, normalizeMoveInput, projectCameraMovement} from './movement.js';
+import {bindGameControls,movementInput} from './controls.js';
+import {advanceCameraYaw,CameraRecentering} from './camera-follow.js';
+import {PlayerController} from './player-controller.js';
+import {bindSpeedPanel} from './speed-panel.js';
+import {drawLocalMap} from './local-map.js';
 const $=id=>document.getElementById(id);
+const flags=new URLSearchParams(location.search);
+const reviewCapture=import.meta.env.DEV&&flags.get('review')==='1';
+const movementDebug=import.meta.env.DEV&&flags.get('movement-debug')==='1';
+const debugPanel=movementDebug?document.createElement('pre'):null;
+if(debugPanel){
+  Object.assign(debugPanel.style,{position:'fixed',right:'8px',top:'22%',zIndex:'10',padding:'8px',
+    color:'#fff',background:'#182b22e8',fontSize:'11px',pointerEvents:'none'});
+  document.body.append(debugPanel);
+}
 const mobile=matchMedia('(pointer: coarse)').matches;
-const scene=new THREE.Scene();
+const touchHud=matchMedia('(max-width: 600px), (pointer: coarse) and (max-width: 1024px)');
+const missionToggle=$('mission-toggle');
+function setMissionExpanded(value){
+  missionToggle.setAttribute('aria-expanded',String(value));
+  $('mission-details').hidden=!value;
+}
+setMissionExpanded(!touchHud.matches);
+missionToggle.addEventListener('click',()=>setMissionExpanded($('mission-details').hidden));
+touchHud.addEventListener('change',event=>{
+  setMissionExpanded(!event.matches);
+  speedPanel.setCollapsed(event.matches);
+});
+let world,stats,note;
 const camera=new THREE.PerspectiveCamera(53,innerWidth/innerHeight,.1,1600);
 const renderer=new THREE.WebGLRenderer({antialias:!mobile,alpha:false,powerPreference:'high-performance'});
-renderer.setPixelRatio(Math.min(devicePixelRatio,mobile?1.25:1.65));
+let quality=mobile?'balanced':'high';
+function applyQuality(){
+  renderer.setPixelRatio(Math.min(devicePixelRatio,qualityProfiles[quality].pixelRatio,mobile?1.25:1.65));
+  stats?.setQuality(quality);
+}
+applyQuality();
 renderer.setSize(innerWidth,innerHeight);
 renderer.outputColorSpace=THREE.SRGBColorSpace;
 renderer.toneMapping=THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure=1.16;
 $('game').appendChild(renderer.domElement);
-const world=await loadWorld();
-const stats=buildWorld(scene,world);
-const avatar=createCharacter(scene);
-avatar.root.position.set(world.spawn[0],0,world.spawn[1]);
-let albumUnlocked=false;
-try{albumUnlocked=localStorage.getItem('game-love-memory-001')==='unlocked';}catch{}
+const avatar=createCharacter(new THREE.Group());
+const player=new PlayerController();
+let storage;try{storage=localStorage;}catch{}
+const gameState=createGameState(storage);
+const isUnlocked=id=>gameState.state.unlockedMemories.includes(id);
 const inputs={keys:new Set(),joystickX:0,joystickY:0,runTouch:false};
-const current={yaw:Math.PI*.55,pitch:.25,distance:9.4};
-const cameraTarget=new THREE.Vector3(world.spawn[0],1.5,world.spawn[1]);
-let modalOpen=false,mapOpen=false,lastFps=0,nearMemory=false,frameCounter=0,accum=0;
+const current={yaw:Math.PI*.55,pitch:cameraSettings.pitch,distance:cameraSettings.distance};
+const view={...current};
+const requestedReviewMode=reviewCapture?flags.get('camera-follow'):null;
+const followModeDefault=['stable','assisted-auto'].includes(requestedReviewMode)?requestedReviewMode:cameraSettings.cameraFollowMode;
+const recentering=new CameraRecentering(followModeDefault);
+const coupledRig=new ThirdPersonRig();
+const usesCoupledRig=()=>recentering.mode==='third-person-coupled';
+let modalOpen=false,mapOpen=false,nearMemory=null,nearPortal=null,frameCounter=0,accum=0;
 let clock=0;
-const note=world.mode==='osm'?'Geometria de OpenStreetMap (© colaboradores OSM)':'Cenário ilustrativo · execute npm run map:import para obter vias reais';
-$('data-status').textContent=world.mode==='osm'?'● MAPA OSM IMPORTADO':'◌ MODO DEMONSTRAÇÃO';
-$('data-status').title=note;
-$('map-note').textContent=world.mode==='osm'?`OpenStreetMap · ${world.features.length} elementos · © colaboradores OSM`:'Mapa ilustrativo: não representa os traçados reais de Toronto';
-$('album-count').textContent=albumUnlocked?'1/1':'0/1';
-if(albumUnlocked)completeMission();
+const transition=$('scene-transition');
+const retry=$('transition-retry');
+let transitionStarted=0,firstImageMs=null,movementReadyMs=null,firstRender=0;
+async function startGame(){
+  retry.hidden=true;
+  try{await manager.load('toronto','start');showToast('Toronto demonstrativa · aproxime-se do portal para entrar no High Park.');}
+  catch(error){
+    console.error('Initial region failed:',error);
+    transition.classList.remove('hidden');transition.style.opacity='1';
+    $('transition-label').textContent='Não foi possível abrir Toronto.';
+    $('transition-stage').textContent='';
+    $('transition-bytes').textContent='';
+    retry.hidden=false;retry.focus();
+  }
+}
+retry.addEventListener('click',startGame);
+const manager=new SceneManager({manifest:regionManifest,loadRegion,buildScene:buildWorld,avatar,
+  onBusy(busy){
+    controls.reset();
+    if(busy){transitionStarted=performance.now();firstImageMs=movementReadyMs=null;gameState.save();hideToast();closeModal();toggleMap(false);nearPortal=null;nearMemory=null;$('action-wrap').classList.add('hidden');}
+    if(!busy&&manager.active)movementReadyMs=performance.now()-transitionStarted;
+    $('app').setAttribute('aria-busy',String(busy));
+  },
+  onProgress(stage,bytes){
+    $('transition-stage').textContent=stage;
+    if(Number.isFinite(bytes))$('transition-bytes').textContent=
+      Math.round(bytes/1024).toLocaleString('pt-BR')+' KiB de dados recebidos';
+  },
+  async fade(opaque,name){
+    if(opaque){$('transition-stage').textContent='Preparando região';$('transition-bytes').textContent='';}
+    transition.classList.remove('hidden');
+    $('transition-label').textContent=`Carregando ${name}…`;
+    const animation=transition.animate([{opacity:opaque?0:1},{opacity:opaque?1:0}],
+      {duration:matchMedia('(prefers-reduced-motion: reduce)').matches?0:220,fill:'forwards'});
+    try{await animation.finished;}finally{transition.style.opacity=opaque?'1':'0';animation.cancel();}
+    if(!opaque)transition.classList.add('hidden');
+  },
+  onActivate(active){
+    world=active.world;stats=active.stats;stats.setQuality(quality);
+    firstRender=performance.now();
+    renderer.shadowMap.enabled=Boolean(stats.entranceArt);
+    renderer.shadowMap.type=THREE.PCFShadowMap;
+    avatar.root.position.y=stats.terrain?.at(avatar.root.position.x,avatar.root.position.z)??0;
+    current.yaw=active.yaw;Object.assign(view,current);recentering.reset();coupledRig.reset(active.yaw);cameraClearance=null;
+    note=world.mode==='osm'?'Geometria de OpenStreetMap (© colaboradores OSM)':(world.fallbackReason?'Cenário ilustrativo · '+world.fallbackReason:'Cenário demonstrativo ilustrativo · não representa a geografia real');
+    const source=$('data-status');
+    source.dataset.origin=world.mode==='osm'?'osm':'demo';
+    source.textContent=world.mode==='osm'?'OSM REAL':'DEMO';
+    $('osm-attribution').classList.toggle('hidden',world.mode!=='osm');
+    if(stats.terrain){source.textContent='OSM · PRÉVIA';note+=' · Altimetria HRDEM (Recursos Naturais do Canadá)';}
+    source.title=note;$('map-note').textContent=`${regionManifest[active.id].name} · ${note}`;
+    $('place-name').textContent=regionManifest[active.id].name;
+    $('brand-region').textContent=active.id==='toronto'?'TORONTO · DEMONSTRAÇÃO':'TORONTO · HIGH PARK';
+    $('map-title').textContent=regionManifest[active.id].name;
+    $('game').setAttribute('aria-label',`Cenário tridimensional de ${regionManifest[active.id].name}`);
+    $('app').dataset.region=active.id;document.title=`Game Love · ${regionManifest[active.id].name}`;
+    $('position-text').textContent=`${Math.round(avatar.root.position.x)}m E · ${Math.round(-avatar.root.position.z)}m N`;
+    $('mission-card').classList.toggle('hidden',!stats.memoryPoints.length);
+    if(mapOpen)drawMiniMap();
+  },
+});
+updateMemoryProgress();
+function updateMemoryProgress(){
+  const count=memories.filter(memory=>isUnlocked(memory.id)).length;
+  $('album-count').textContent=count+'/'+memories.length;
+  $('mission-progress').textContent=count+'/'+memories.length;
+  $('mission-progress').setAttribute('aria-label',count+' de '+memories.length+' memórias');
+  if(memories.length&&count===memories.length)completeMission();
+}
 function completeMission(){
+  $('mission-short').textContent='Memória encontrada';
   $('mission-title').textContent='Memória encontrada ♡';
   $('mission-desc').textContent='Uma lembrança especial já faz parte do seu álbum. Você pode revisitá-la quando quiser.';
   $('mission-state').textContent='✓ CONCLUÍDA'; $('mission-state').classList.add('completed');
 }
-function showModal(html){modalOpen=true;$('modal-content').innerHTML=html;$('modal-layer').classList.remove('hidden');inputs.keys.clear();}
-function closeModal(){modalOpen=false;$('modal-layer').classList.add('hidden');}
-function showMemory(){
-  if(!albumUnlocked){albumUnlocked=true;try{localStorage.setItem('game-love-memory-001','unlocked');}catch{}
-    $('album-count').textContent='1/1';completeMission();showToast('Nova memória adicionada ao álbum ♡');}
-  showModal(`<p class="eyebrow">MEMÓRIA 01 / 01 · DESBLOQUEADA</p>
-  <div class="memory-art"><div class="memory-sun">✦</div><div class="memory-hill"></div><span>UMA TARDE ESPECIAL</span></div>
-  <h2 id="modal-title" class="memory-title">A primeira lembrança</h2>
-  <p class="memory-sub">HIGH PARK · TORONTO</p>
-  <p class="memory-copy">Esta é uma memória de exemplo. Aqui você poderá contar uma história real, incluir uma carta romântica e adicionar até três fotografias. A lembrança ficará guardada neste álbum após ser desbloqueada.</p>
-  <div class="photo-placeholders"><div>+ Foto 1</div><div>+ Foto 2</div><div>+ Foto 3</div></div>
-  <div class="memory-signoff">Com carinho, <span>♡</span></div>`);
+let modalTrigger=null;
+function updateOverlay(){
+  const active=mapOpen?'map-panel':modalOpen?'modal-layer':null;
+  for(const child of $('app').children)child.inert=Boolean(active&&child.id!==active&&child.id!=='map-backdrop');
 }
-function showAlbum(){showModal(`<p class="eyebrow">SEU INVENTÁRIO</p><h2 id="modal-title" class="memory-title">Álbum de memórias</h2><p class="memory-copy">Cada lugar guarda uma história. Explore o mapa para desbloquear lembranças especiais.</p><button id="album-memory" class="album-entry ${albumUnlocked?'':'album-locked'}"><span class="album-entry-icon">${albumUnlocked?'♡':'♧'}</span><span><b>${albumUnlocked?'A primeira lembrança':'Memória ainda não descoberta'}</b><small>High Park · ${albumUnlocked?'Toque para reviver':'Explore o parque para desbloquear'}</small></span><span>›</span></button>`);const b=$('album-memory');b.addEventListener('click',()=>{if(albumUnlocked)showMemory();else showToast('Primeiro descubra esta memória pelo parque.');});}
-function showHelp(){showModal(`<p class="eyebrow">COMO JOGAR</p><h2 id="modal-title" class="memory-title">Um passeio por Toronto</h2><p class="memory-copy">Este protótipo valida a câmera, a movimentação, a importação de ruas e o sistema de memórias.</p><div class="help-rows"><p><strong>W A S D</strong><span>Caminhar</span></p><p><strong>Mouse / gesto</strong><span>Girar câmera</span></p><p><strong>Shift / ↟</strong><span>Correr</span></p><p><strong>E / tocar</strong><span>Interagir perto da memória</span></p><p><strong>M / I</strong><span>Mapa / Álbum</span></p><p><strong>Scroll</strong><span>Zoom da câmera</span></p></div><p class="map-note">${note}. O metrô e o streetcar ainda não estão implementados.</p>`);}
-function showToast(msg){const el=$('toast');el.textContent=msg;el.classList.remove('hidden');clearTimeout(showToast.timer);showToast.timer=setTimeout(()=>el.classList.add('hidden'),3000);}
+function showModal(html){
+  if(manager.loading||mapOpen)return;
+  if(!modalOpen)modalTrigger=document.activeElement;
+  modalOpen=true;$('modal-content').innerHTML=html;$('modal-layer').classList.remove('hidden');
+  controls.reset();updateOverlay();$('modal-close').focus({preventScroll:true});
+}
+function closeModal(){
+  if(!modalOpen)return;
+  modalOpen=false;$('modal-layer').classList.add('hidden');updateOverlay();
+  if(!manager.loading)modalTrigger?.focus({preventScroll:true});
+  modalTrigger=null;
+}
+function showMemory(memory,firstOpening=false){
+  showModal(memoryMarkup(memory,firstOpening));
+  showPhotoFallbacks($('modal-content'));
+}
+function showAlbum(){
+  if(manager.loading||modalOpen||mapOpen)return;
+  showModal(albumMarkup(memories,gameState.state));
+  showPhotoFallbacks($('modal-content'));
+  for(const button of $('modal-content').querySelectorAll('[data-open-memory]')){
+    button.onclick=()=>{
+      const memory=memories.find(entry=>entry.id===button.dataset.openMemory);
+      if(memory&&isUnlocked(memory.id))showMemory(memory);
+    };
+  }
+}
+function showHelp(){
+  if(manager.loading)return;
+  showModal(`<p class="eyebrow">COMO JOGAR</p><h2 id="modal-title" class="memory-title">Um passeio por Toronto</h2><p class="memory-copy">Este protótipo valida a câmera, a movimentação, a importação de ruas e o sistema de memórias.</p><div class="help-rows"><p><strong>W A S D</strong><span>Caminhar</span></p><p><strong>Mouse / gesto</strong><span>Girar câmera</span></p><p><strong>Shift / ↟</strong><span>Correr</span></p><p><strong>E / tocar</strong><span>Interagir perto da memória</span></p><p><strong>M / I</strong><span>Mapa / Álbum</span></p><p><strong>Scroll</strong><span>Zoom da câmera</span></p></div><fieldset class="visual-settings"><legend>Câmera e gráficos</legend>
+    <label>Acompanhamento<select id="camera-follow-mode"><option value="stable">Estável</option><option value="third-person-coupled">Terceira pessoa com curvas</option></select></label>
+    <button id="camera-recenter" type="button">Recentralizar câmera</button>
+    <label>Distância da câmera<input id="camera-distance" type="range" min="${cameraSettings.minDistance}" max="${cameraSettings.maxDistance}" step="0.1" value="${current.distance}"></label>
+    <label>Inclinação da câmera<input id="camera-pitch" type="range" min="${cameraSettings.minPitch}" max="${cameraSettings.maxPitch}" step="0.01" value="${current.pitch}"></label>
+    <label>Qualidade gráfica<select id="visual-quality"><option value="low">Baixa</option><option value="balanced">Equilibrada</option><option value="high">Alta</option></select></label>
+  </fieldset><p class="map-note">${note}.</p>`);
+  const followMode=$('camera-follow-mode');
+  followMode.value=recentering.mode;
+  followMode.onchange=()=>{
+    recentering.setMode(followMode.value);
+    coupledRig.reset(avatar.root.rotation.y);
+    current.yaw=view.yaw;
+  };
+  $('camera-recenter').onclick=()=>{closeModal();requestRecenter();};
+  $('camera-distance').oninput=e=>current.distance=e.target.valueAsNumber;
+  $('camera-pitch').oninput=e=>current.pitch=e.target.valueAsNumber;
+  const select=$('visual-quality');select.value=quality;
+  select.onchange=()=>{quality=select.value;applyQuality();};
+}
+function hideToast(){clearTimeout(showToast.timer);$('toast').classList.add('hidden');}
+function showToast(msg){
+  hideToast();const el=$('toast');el.textContent=msg;el.classList.remove('hidden');
+  showToast.timer=setTimeout(hideToast,3000);
+}
 $('modal-close').addEventListener('click',closeModal);$('modal-backdrop').addEventListener('click',closeModal);
 $('btn-album').addEventListener('click',showAlbum);$('btn-help').addEventListener('click',showHelp);
-function toggleMap(force){mapOpen=typeof force==='boolean'?force:!mapOpen;$('map-panel').classList.toggle('hidden',!mapOpen);if(mapOpen)drawMiniMap();}
-$('btn-map').addEventListener('click',()=>toggleMap());$('close-map').addEventListener('click',()=>toggleMap(false));
-$('action-btn').addEventListener('click',()=>{if(nearMemory)showMemory();});
+function toggleMap(force){
+  if((manager.loading||modalOpen)&&force!==false)return;
+  const open=typeof force==='boolean'?force:!mapOpen;
+  if(open===mapOpen)return;
+  mapOpen=open;
+  controls.reset();
+  $('map-panel').classList.toggle('hidden',!open);
+  $('map-backdrop').classList.toggle('hidden',!open);
+  $('btn-map').setAttribute('aria-expanded',String(open));
+  updateOverlay();
+  if(open){hideToast();drawMiniMap();$('close-map').focus({preventScroll:true});}
+  else if(!manager.loading)$('btn-map').focus({preventScroll:true});
+}
+$('btn-map').addEventListener('click',()=>toggleMap());
+$('close-map').addEventListener('click',()=>toggleMap(false));
+$('map-backdrop').addEventListener('click',()=>toggleMap(false));
+new ResizeObserver(()=>{if(mapOpen)drawMiniMap();}).observe($('map-canvas'));
+async function interact(){
+  if(manager.loading||modalOpen||mapOpen)return;
+  if(nearPortal){
+    try{await manager.travel(nearPortal.id);}catch(error){console.error('Scene transition failed:',error);showToast('Não foi possível carregar o local. Tente novamente.');}
+  }else{
+    const point=nearbyMemory(stats?.memoryPoints??[],[avatar.root.position.x,avatar.root.position.z]);
+    if(!point)return;
+    const opened=gameState.unlockMemory(point.memory.id);
+    if(opened)updateMemoryProgress();
+    showMemory(point.memory,opened);
+  }
+}
+$('action-btn').addEventListener('click',interact);
 window.addEventListener('keydown',e=>{
-  const key=e.key.toLowerCase();if([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(key))e.preventDefault();
+  const key=e.key.toLowerCase();
   if(key==='escape'){closeModal();toggleMap(false);return;}
-  if(modalOpen)return;
+  const editing=e.target.closest?.('input,textarea,select,[contenteditable="true"],[role="textbox"]');
+  if(editing)return;
+  if([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(key))e.preventDefault();
+  if(manager.loading||modalOpen)return;
+  if(mapOpen){if(key==='m'&&!e.repeat)toggleMap(false);return;}
+  if(speedPanel.shortcut(e))return;
   if(key==='i'){showAlbum();return;}if(key==='m'){toggleMap();return;}
-  if(key==='e'&&nearMemory){showMemory();return;}
+  if(key==='c'){if(!e.repeat)requestRecenter();return;}
+  if(key==='e'){if(!e.repeat)void interact();return;}
   inputs.keys.add(key);
 });
 window.addEventListener('keyup',e=>inputs.keys.delete(e.key.toLowerCase()));
-window.addEventListener('blur',()=>inputs.keys.clear());
-renderer.domElement.addEventListener('wheel',e=>{e.preventDefault();current.distance=Math.min(20,Math.max(5,current.distance+Math.sign(e.deltaY)*1.0));},{passive:false});
-let dragging=false,prevX=0,prevY=0;
-renderer.domElement.addEventListener('pointerdown',e=>{dragging=true;prevX=e.clientX;prevY=e.clientY;renderer.domElement.setPointerCapture(e.pointerId);});
-renderer.domElement.addEventListener('pointermove',e=>{if(!dragging)return;current.yaw-=(e.clientX-prevX)*.006;current.pitch=Math.min(.75,Math.max(.05,current.pitch+(e.clientY-prevY)*.003));prevX=e.clientX;prevY=e.clientY;});
-renderer.domElement.addEventListener('pointerup',()=>dragging=false);renderer.domElement.addEventListener('pointercancel',()=>dragging=false);
-// Mobile analog controls — no external joystick library.
-const joystick=$('joystick'),stick=$('stick');let joystickPointer=null;
-function joystickMove(e){const r=joystick.getBoundingClientRect();const dx=e.clientX-(r.left+r.width/2),dy=e.clientY-(r.top+r.height/2),mag=Math.max(1,Math.hypot(dx,dy));const f=Math.min(1,mag/38);inputs.joystickX=dx/mag*f;inputs.joystickY=-dy/mag*f;stick.style.transform=`translate(${inputs.joystickX*38}px,${-inputs.joystickY*38}px)`;}
-joystick.addEventListener('pointerdown',e=>{joystickPointer=e.pointerId;joystick.setPointerCapture(e.pointerId);joystickMove(e);});
-joystick.addEventListener('pointermove',e=>{if(joystickPointer===e.pointerId)joystickMove(e);});
-function endJoystick(e){if(joystickPointer!==e.pointerId)return;joystickPointer=null;inputs.joystickX=inputs.joystickY=0;stick.style.transform='translate(0px,0px)';}
-joystick.addEventListener('pointerup',endJoystick);joystick.addEventListener('pointercancel',endJoystick);
-$('mobile-run').addEventListener('pointerdown',e=>{inputs.runTouch=true;e.currentTarget.setPointerCapture(e.pointerId);});
-$('mobile-run').addEventListener('pointerup',()=>inputs.runTouch=false);$('mobile-run').addEventListener('pointercancel',()=>inputs.runTouch=false);
+const controls=bindGameControls({canvas:renderer.domElement,joystick:$('joystick'),stick:$('stick'),
+  runButton:$('mobile-run'),inputs,camera:current,settings:cameraSettings,enabled:()=>!manager.loading&&!modalOpen&&!mapOpen,
+  onCameraInput:()=>usesCoupledRig()?coupledRig.orbitManually():recentering.manualInput()});
+$('btn-recenter').addEventListener('click',requestRecenter);
+const speedPanel=bindSpeedPanel($('speed-panel'),player,{minimized:touchHud.matches});
+function resetTiming(){controls.reset();previous=performance.now();accum=frameCounter=0;}
+window.addEventListener('blur',resetTiming);
+document.addEventListener('visibilitychange',resetTiming);
 function drawMiniMap(){
-  const cnv=$('map-canvas'),ctx=cnv.getContext('2d'),w=cnv.width,h=cnv.height;
-  ctx.clearRect(0,0,w,h);ctx.fillStyle='#e5e8d3';ctx.fillRect(0,0,w,h);
-  const px=avatar.root.position.x,pz=avatar.root.position.z,scale=.6;
-  const xy=([x,z])=>[w/2+(x-px)*scale,h/2+(z-pz)*scale];
-  for(const f of world.features){const pts=f.points;if(!pts.length)continue;
-    ctx.beginPath();pts.forEach((p,i)=>{const [x,y]=xy(p);if(!i)ctx.moveTo(x,y);else ctx.lineTo(x,y)});
-    if(['green','water','building'].includes(f.kind)){ctx.closePath();ctx.fillStyle=f.kind==='water'?'#9dc9c7':f.kind==='building'?'#cfbcae':'#b2cd98';ctx.fill();}
-    else{ctx.strokeStyle=f.kind==='rail'?'#a18b78':'#f5f0d7';ctx.lineWidth=['primary','secondary','residential'].includes(f.tags?.highway)?5:2;ctx.stroke();}
-  }
-  const [mx,my]=xy(world.memory);ctx.beginPath();ctx.arc(mx,my,7,0,Math.PI*2);ctx.fillStyle='#b95164';ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=3;ctx.stroke();
-  ctx.beginPath();ctx.arc(w/2,h/2,8,0,Math.PI*2);ctx.fillStyle='#334a43';ctx.fill();ctx.strokeStyle='white';ctx.lineWidth=3;ctx.stroke();
+  const known=stats.memoryPoints.filter(({memory})=>gameState.state.discoveredMemories.includes(memory.id));
+  drawLocalMap($('map-canvas'),world,manager.active.portals,[avatar.root.position.x,avatar.root.position.z],
+    known.map(point=>point.position));
 }
-let previous=performance.now();
+function requestRecenter(){
+  if(manager.loading||modalOpen||mapOpen)return;
+  if(usesCoupledRig())coupledRig.align();
+  else recentering.request(movementInput(inputs)[0],avatar.root.rotation.y);
+}
+let cameraClearance=null;
+const target=new THREE.Vector3();
+// Stage reproducible camera routes without changing the saved game or
+// bypassing the scene transition. This hook is stripped from production.
+if(reviewCapture)window.stageCameraReview=([x,z],yaw)=>{
+  if(manager.loading||manager.active?.id!=='high-park'||world.mode!=='osm'||
+    !stats.canWalk(x,z)||!Number.isFinite(yaw))throw new Error('Invalid High Park review pose.');
+  avatar.root.position.set(x,stats.terrain?.at(x,z)??0,z);
+  avatar.root.rotation.y=current.yaw=yaw;
+  current.pitch=cameraSettings.pitch;current.distance=cameraSettings.distance;
+  Object.assign(view,current);
+  recentering.reset();coupledRig.reset(yaw);
+  cameraClearance=null;
+};
+if(reviewCapture)window.inspectWorldStreaming=()=>({
+  ...stats?.streaming?.stats(),
+  firstImageMs,movementReadyMs,sceneActivationMs:firstRender-transitionStarted,
+  renderer:{...renderer.info.memory,...renderer.info.render},
+});
+const reviewPoint=new THREE.Vector3();
+const bodySampleHeights=[.15,1.25,2.45];
+function inspectCameraBody(){
+  camera.updateMatrixWorld();
+  const destination=camera.position.toArray();
+  let inFrame=true,lineOfSight=true;
+  for(const height of bodySampleHeights){
+    const point=[target.x,avatar.root.position.y+height,target.z];
+    reviewPoint.fromArray(point).project(camera);
+    inFrame&&=Math.abs(reviewPoint.x)<1&&Math.abs(reviewPoint.y)<1&&Math.abs(reviewPoint.z)<1;
+    const clear=resolveCamera(point,destination,stats.cameraObstacles,0,null,stats.terrain);
+    lineOfSight&&=clear.every((value,i)=>Math.abs(value-destination[i])<1e-6);
+  }
+  return {inFrame,lineOfSight};
+}
+const viewDirection=new THREE.Vector3();
+let previous=performance.now(),reviewFrame=0;
 function animate(now){
-  const dt=Math.min(.05,(now-previous)/1000||0);previous=now;clock+=dt;
-  let x=(inputs.keys.has('d')||inputs.keys.has('arrowright')?1:0)-(inputs.keys.has('a')||inputs.keys.has('arrowleft')?1:0)+inputs.joystickX;
-  let z=(inputs.keys.has('w')||inputs.keys.has('arrowup')?1:0)-(inputs.keys.has('s')||inputs.keys.has('arrowdown')?1:0)+inputs.joystickY;
-  if(modalOpen||mapOpen){x=z=0;}
-  const strength=Math.min(1,Math.hypot(x,z));if(strength>0){x/=Math.hypot(x,z);z/=Math.hypot(x,z);}
+  const timing=frameTiming(now,previous);const dt=timing.simulation;previous=now;clock+=dt;
+  if(!manager.active)return;
+  const blocked=manager.loading||modalOpen||mapOpen;
+  const [right,forward]=blocked?[0,0]:movementInput(inputs);
+  const coupled=usesCoupledRig();
+  const turn=coupled&&!blocked?coupledRig.step({right,forward,dt,yaw:view.yaw,
+    manualYaw:current.yaw,dragging:controls.isCameraDragging()}):null;
+  const blend=-Math.expm1(-dt*cameraSettings.orbit);
+  if(turn){
+    view.yaw=turn.cameraYaw;
+    if(!turn.manual)current.yaw=view.yaw;
+  }else if(!coupled)view.yaw=advanceCameraYaw(view.yaw,current.yaw,dt,{rate:cameraSettings.orbit});
+  view.pitch+=(current.pitch-view.pitch)*blend;
+  view.distance+=(current.distance-view.distance)*blend;
+  const command=turn?.move??{right,forward,yaw:recentering.movementYaw({right,forward,yaw:view.yaw})};
+  const commandYaw=command.yaw;
   const running=inputs.keys.has('shift')||inputs.runTouch;
-  const speed=(running?9:5.1)*strength;
-  const dx=(x*Math.cos(current.yaw)-z*Math.sin(current.y))*speed*dt;
-  const dz=(-x*Math.sin(current.yaw)-z*Math.cos(current.y))*speed*dt;
-  const nx=avatar.root.position.x+dx,nz=avatar.root.position.z+dz;
-  if(stats.canWalk(nx,avatar.root.position.z))avatar.root.position.x=nx;
-  if(stats.canWalk(avatar.root.position.x,nz))avatar.root.position.z=nz;
-  if(speed>.01) {
-    const targetRotation=Math.atan2(-dx,-dz);let diff=(targetRotation-avatar.root.rotation.y+Math.PI*3)%(Math.PI*2)-Math.PI;
-    avatar.root.rotation.y+=diff*Math.min(1,dt*9);
+  const previousPosition=[avatar.root.position.x,avatar.root.position.z];
+  const motion=player.move(previousPosition,{...command,running,dt,canWalk:stats.canWalk});
+  if(finitePoint(motion.position)){
+    const [x,z]=motion.position;
+    avatar.root.position.set(x,stats.terrain?.at(x,z)??0,z);
   }
-  avatar.update(dt,speed);
-  stats.markerRoot.userData.animate(clock);
-  const target=new THREE.Vector3(avatar.root.position.x,1.48,avatar.root.position.z);
-  cameraTarget.lerp(target,Math.min(1,dt*7));
-  const horiz=current.distance*Math.cos(current.pitch);
-  const desired=new THREE.Vector3(cameraTarget.x+Math.sin(current.yaw)*horiz,cameraTarget.y+2.3+current.distance*Math.sin(current.pitch),cameraTarget.z+Math.cos(current.yaw)*horiz);
-  camera.position.lerp(desired,Math.min(1,dt*8)); camera.lookAt(cameraTarget);
-  nearMemory=Math.hypot(avatar.root.position.x-world.memory[0],avatar.root.position.z-world.memory[1])<5.3;
-  $('action-wrap').classList.toggle('hidden',!nearMemory||modalOpen||mapOpen);
-  $('action-label').textContent=albumUnlocked?'Revisitar lembrança':'Descobrir memória';
-  $('compass').textContent=(((current.yaw%(Math.PI*2)+Math.PI*2)%(Math.PI*2))<Math.PI/4||((current.yaw%(Math.PI*2)+Math.PI*2)%(Math.PI*2))>Math.PI*1.75)?'N':Math.sin(current.yaw)>0?'O':'L';
-  accum+=dt;frameCounter++;
-  if(accum>.45){lastFps=Math.round(frameCounter/accum);frameCounter=0;accum=0;
-    $('performance').textContent=`${lastFps} FPS`;
+  if(turn)avatar.root.rotation.y=turn.locomotionHeading;
+  if(!coupled){
+    const recenteredYaw=blocked?null:recentering.update({
+      right,forward,heading:avatar.root.rotation.y,movementHeading:motion.heading,yaw:view.yaw,dt,elapsed:timing.real,
+    });
+    if(recenteredYaw!==null)current.yaw=view.yaw=recenteredYaw;
+    if(motion.heading!==null)
+      avatar.root.rotation.y=advanceCameraYaw(avatar.root.rotation.y,motion.heading,dt,{rate:9});
+  }
+  const cameraYaw=view.yaw;
+  avatar.update(dt,motion.animationSpeed);
+  speedPanel.update(motion.speed);
+  stats.animateMemoryMarkers(clock);
+
+  // Translate the whole orbit with the avatar. Smoothing its world position
+  // would temporarily rotate the view after sideways motion.
+  target.set(avatar.root.position.x,avatar.root.position.y+1.48,avatar.root.position.z);
+  cameraClearance=resolveGameplayCamera(target.toArray(),view,stats,cameraClearance,dt,cameraSettings);
+  camera.position.fromArray(cameraClearance.position);
+  camera.lookAt(target);
+
+  let diagnostics;
+  if(reviewCapture||movementDebug){
+    const displacement=motion.position.map((value,index)=>value-previousPosition[index]);
+    camera.getWorldDirection(viewDirection);
+    const renderedYaw=Math.atan2(-viewDirection.x,-viewDirection.z);
+    const projected=projectCameraMovement(displacement,commandYaw).map(value=>dt?value/dt:0);
+    const screenVelocity=projectCameraMovement(displacement,renderedYaw).map(value=>dt?value/dt:0);
+    diagnostics={input:normalizeMoveInput(right,forward),cameraYaw:renderedYaw,characterHeading:avatar.root.rotation.y,
+      projected,screenVelocity,commandYaw,movementHeading:motion.heading,
+      obstruction:cameraClearance.diagnostics,commandSpeed:player.configuredSpeed(running),
+      angularFollow:recentering.target!==null&&recentering.rotation?.kind!=='shortcut',
+      recentering:recentering.target!==null&&recentering.rotation?.kind!=='lateral',
+      cameraFollowMode:recentering.mode,followState:recentering.phase,followTimeSeconds:recentering.clock,rotation:recentering.rotation};
+    if(turn)Object.assign(diagnostics,{frame:++reviewFrame,dt,speed:motion.speed,
+      locomotionHeading:turn.locomotionHeading,cameraTargetYaw:turn.targetYaw,manual:turn.manual,
+      angularFollow:!turn.manual,followState:turn.manual?'manual':'follow'});
+    if(reviewCapture)diagnostics.obstruction.body=inspectCameraBody();
+    if(debugPanel){
+      const format=vector=>vector.map(value=>value.toFixed(2)).join(' / ');
+      const targetLine=turn?`Locomoção    ${turn.locomotionHeading.toFixed(2)} rad
+Alvo câmera  ${turn.targetYaw.toFixed(2)} rad`:`Comando yaw  ${commandYaw.toFixed(2)} rad`;
+      debugPanel.textContent=`${document.documentElement.dataset.movementStage??flags.get('movement-scenario')??'Diagnóstico de movimento'}
+Entrada X/Y  ${format(diagnostics.input)}
+Yaw câmera   ${cameraYaw.toFixed(2)} rad
+Corpo        ${diagnostics.characterHeading.toFixed(2)} rad
+Dist. câmera ${cameraClearance.distance.toFixed(2)} m
+Obstrução    ${cameraClearance.diagnostics.state}
+${targetLine}
+Direita/frente ${format(projected)} m/s
+Modo: ${recentering.mode} · ${diagnostics.followState}`;
+    }
+  }
+  nearMemory=blocked?null:nearbyMemory(stats.memoryPoints,[avatar.root.position.x,avatar.root.position.z]);
+  if(nearMemory&&!gameState.state.discoveredMemories.includes(nearMemory.memory.id))
+    gameState.discoverMemory(nearMemory.memory.id);
+  nearPortal=manager.nearbyPortal([avatar.root.position.x,avatar.root.position.z]);
+  $('action-wrap').classList.toggle('hidden',(!nearMemory&&!nearPortal)||manager.loading||modalOpen||mapOpen);
+  if(nearPortal||nearMemory)$('action-label').textContent=nearPortal?.label??nearMemory.memory.shortTitle;
+  $('compass').textContent=(((cameraYaw%(Math.PI*2)+Math.PI*2)%(Math.PI*2))<Math.PI/4||((cameraYaw%(Math.PI*2)+Math.PI*2)%(Math.PI*2))>Math.PI*1.75)?'N':Math.sin(cameraYaw)>0?'O':'L';
+  accum+=timing.real;frameCounter++;
+  if(accum>.45){const metrics=frameMetrics(frameCounter,accum);frameCounter=0;accum=0;
+    $('performance').textContent=`${Math.round(metrics.fps)} FPS · ${metrics.milliseconds.toFixed(1)} ms`;
     $('position-text').textContent=`${Math.round(avatar.root.position.x)}m E · ${Math.round(-avatar.root.position.z)}m N`;
-    if(mapOpen)drawMiniMap();
   }
-  renderer.render(scene,camera);
+  stats.setDetailFocus?.(camera.position.x,camera.position.z);
+  camera.getWorldDirection(viewDirection);
+  if(!world.streamingEager)stats.streaming?.update([avatar.root.position.x,avatar.root.position.z],
+    dt>0?[(avatar.root.position.x-previousPosition[0])/dt,(avatar.root.position.z-previousPosition[1])/dt]:[0,0],
+    [viewDirection.x,viewDirection.z]);
+  renderer.shadowMap.enabled=Boolean(stats.entranceArt);
+  renderer.render(manager.active.scene,camera);
+  if(firstImageMs===null&&firstRender>=transitionStarted)firstImageMs=performance.now()-transitionStarted;
+  // Development-only DOM diagnostics for repeated-transition GPU resource checks.
+  if(import.meta.env.DEV)renderer.domElement.dataset.resources=JSON.stringify({...renderer.info.memory,
+    region:manager.active.id,objects:manager.active.scene.children.length,calls:renderer.info.render.calls,triangles:renderer.info.render.triangles,avatars:manager.active.scene.children.filter(o=>o===avatar.root).length});
+  if(reviewCapture)renderer.domElement.dataset.reviewPose=JSON.stringify({
+    sceneId:manager.active.scene.name,dataset:world.dataset??null,entranceArt:stats.entranceArt??null,origin:world.mode==='osm'?'OSM REAL':'DEMO',
+    sourceSha256:world.sourceSha256??null,bboxWgs84:world.bboxWgs84??null,geographicOrigin:world.origin??null,
+    position:{local:avatar.root.position.toArray(),headingRadians:avatar.root.rotation.y},
+    orbit:{yaw:cameraYaw,pitch:view.pitch,renderedYaw:diagnostics.cameraYaw},
+    movement:diagnostics,
+    portals:manager.active.portals.map(({id,position})=>({id,position})),
+    memoryPoints:stats.memoryPoints.map(({memory,position})=>({
+      id:memory.id,position,radius:memory.radius,anchor:memory.anchor,
+      marker:manager.active.scene.getObjectByName('memory:'+memory.id)?.position.toArray()??null,
+      discovered:gameState.state.discoveredMemories.includes(memory.id),unlocked:isUnlocked(memory.id),
+    })),
+    camera:{projection:camera.type,position:camera.position.toArray(),quaternion:camera.quaternion.toArray(),
+      fovDegrees:camera.fov},
+    graphics:{profile:quality,...qualityProfiles[quality],pixelRatio:renderer.getPixelRatio(),antialias:!mobile},
+    resolution:{width:renderer.domElement.width,height:renderer.domElement.height},
+  });
 }
 renderer.setAnimationLoop(animate);
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
-showToast(world.mode==='osm'?'Mapa de Toronto carregado!':'Demonstração visual carregada. Importe o mapa real com npm run map:import');
+await startGame();
