@@ -27,7 +27,7 @@ document.body.append(renderer.domElement);
 
 const evidenceByScene=new WeakMap();
 const manager=new SceneManager({manifest:regionManifest,loadRegion,avatar,buildScene(scene,world,portals){
-  const evidence=world.mode==='osm'?collectRenderedGeometry():null;
+  const evidence=world.mode==='osm'&&!world.terrain?collectRenderedGeometry():null;
   const stats=buildWorld(scene,world,portals,evidence);
   if(evidence)evidenceByScene.set(scene,evidence.parts);
   return stats;
@@ -63,8 +63,8 @@ function frameCamera(point,world,[x,z]){
   }
   const view=new THREE.PerspectiveCamera(53,aspect,.1,1600);
   const [dx,y,dz]=point.eye,[lx,ly,lz]=point.look;
-  view.position.set(x+dx,y,z+dz);
-  view.lookAt(x+lx,ly,z+lz);
+  view.position.set(x+dx,y+(world.terrain?.at(x+dx,z+dz)??0),z+dz);
+  view.lookAt(x+lx,ly+(world.terrain?.at(x+lx,z+lz)??0),z+lz);
   return view;
 }
 
@@ -92,7 +92,7 @@ async function prepare(id){
     source:'Projeção inversa dos limites locais.',
   }:null;
   const sceneInfo={
-    sceneId:active.scene.name,origin,environment:active.stats.environment,
+    sceneId:active.scene.name,origin,environment:active.stats.environment,dataset:world.dataset??null,
     boundsLocal:{format:'[minX,minZ,maxX,maxZ]',values:world.bbox},
     geographicBounds,
     geographicOrigin:world.origin??null,
@@ -118,7 +118,7 @@ async function prepare(id){
   const position=locate(point,active);
   if(!position||!active.stats.canWalk(...position))
     return {...missing('Posição cadastrada ausente ou obstruída.'),...sceneInfo};
-  avatar.root.position.set(position[0],0,position[1]);
+  avatar.root.position.set(position[0],world.terrain?.at(...position)??0,position[1]);
   avatar.root.rotation.y=point.heading;
   active.stats.setQuality(quality);
   active.stats.animateMemoryMarkers?.(0);
@@ -130,7 +130,7 @@ async function prepare(id){
   document.querySelector('#review-attribution')?.remove();
   if(origin==='OSM REAL'){
     const attribution=document.createElement('span');attribution.id='review-attribution';
-    attribution.textContent=(camera.isOrthographicCamera?'↑ N · ':'')+point.label+' · OSM REAL · © OpenStreetMap contributors';
+    attribution.textContent=(camera.isOrthographicCamera?'↑ N · ':'')+point.label+(world.terrain?' · PRÉVIA OSM + HRDEM':' · OSM REAL')+' · © OpenStreetMap contributors';
     document.body.append(attribution);
   }
   const direction=new THREE.Vector3();camera.getWorldDirection(direction);
@@ -209,5 +209,43 @@ function geography(){
     ],
   };
 }
-window.gameLoveReview={version:reviewPipelineVersion,prepare,measure,motion,geography,
+function expandedTerrain(){
+  const {world,stats,spawn,scene}=manager.active;
+  const {terrain,terrainData,coverage}=world;
+  if(!terrain)return {status:'unavailable'};
+  const {heightsCm,...source}=terrainData;
+  const landmarkSources=[
+    ['Entrada norte',174188399,spawn],
+    ['Nature Centre',43805272],
+    ['Campo de futebol',680982127],
+    ['Diamante de beisebol',14344509],
+    ['Quadras de tênis',1116261446],
+    ['Piscina externa',808430980],
+    ['West Road',14344426],
+    ['Cherry Hill Trail',871510614],
+    ['Grenadier Café',125699284],
+    ['Maple Leaf Gardens',251569209],
+    ['Hillside Gardens (eixo de referência)',24039457],
+    ['Grenadier Pond',174225267],
+  ];
+  const landmarks=landmarkSources.map(([name,osmId,anchor])=>{
+    const feature=world.features.find(f=>f.osmId===osmId);
+    const local=anchor??feature?.points[Math.floor((feature?.points.length??0)/2)];
+    return {name,osmId,local,geographic:local?geographicPosition(local,world.origin):null,
+      elevationMeters:local?terrain.at(...local)+source.zeroMeters:null,
+      fidelity:feature?'Feição OSM de referência · primeira entrega geográfica':'Não localizada no recorte'};
+  });
+  const pond=world.features.find(f=>f.osmId===174225267);
+  const waterBlocked=pond?.points.every(point=>!stats.canWalk(...point));
+  const memory=stats.memoryPoints[0],marker=memory&&scene.getObjectByName('memory:'+memory.memory.id);
+  const memoryGrounded=Boolean(marker&&Math.abs(marker.position.y-terrain.at(...memory.position))<.001);
+  const chunks=scene.children.filter(mesh=>mesh.name==='terrain-chunk').length;
+  return {status:chunks>0&&waterBlocked&&memoryGrounded&&landmarks.every(site=>site.local)?'passed':'failed',
+    source,coverage,landmarks,chunks,waterBlocked,memoryGrounded,spawnGrounded:stats.canWalk(...spawn),
+    train:{status:'pending',reference:'https://www.toronto.ca/legdocs/mmis/2026/gg/bgrd/backgroundfile-284637.pdf'},
+    limits:['Recorte geográfico da primeira entrega, modelos de edifício ainda genéricos.',
+      'Superfícies esportivas cartográficas, sem equipamentos detalhados.',
+      'Precisão vertical local não verificada em campo. A superfície do lago não é batimetria.']};
+}
+window.gameLoveReview={version:reviewPipelineVersion,prepare,measure,motion,geography,expandedTerrain,
   renderedGeometry:()=>evidenceByScene.get(manager.active?.scene)??[]};

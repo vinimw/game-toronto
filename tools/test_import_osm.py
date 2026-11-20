@@ -1,3 +1,4 @@
+import gzip
 import importlib.util
 import json
 import pathlib
@@ -10,6 +11,14 @@ spec.loader.exec_module(osm)
 
 
 class ImporterTests(unittest.TestCase):
+    def test_expanded_snapshot_is_reproducible(self):
+        archive = FILE.with_name('data') / 'high-park-expanded.osm-source.json.gz'
+        source = gzip.decompress(archive.read_bytes())
+        snapshot = json.loads((FILE.parents[1] / 'public/data/high-park-expanded.osm.json').read_text())
+        result = osm.convert_api(json.loads(source), source, tuple(snapshot['bboxWgs84']),
+                                 dataset='high-park-expanded', origin=snapshot['origin'])
+        self.assertEqual(result, snapshot)
+
     def test_projection_orientation(self):
         origin = {'lat': 43.65, 'lon': -79.46}
         self.assertAlmostEqual(osm.project(43.65, -79.46, origin)[0], 0)

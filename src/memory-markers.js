@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 
-export function addMemoryMarkers(scene,points){
+export function addMemoryMarkers(scene,points,terrain){
   const markers=[];
   for(const {memory,position:[x,z]} of points){
     if(memory.visual!=='glow')continue;
     const marker=new THREE.Group();
     marker.name='memory:'+memory.id;
-    marker.position.set(x,0,z);
+    marker.position.set(x,terrain?.at(x,z)??0,z);
     const core=new THREE.Mesh(new THREE.OctahedronGeometry(.16),
       new THREE.MeshBasicMaterial({color:0xffeda6}));
     const ring=new THREE.Mesh(new THREE.TorusGeometry(.68,.027,6,28),

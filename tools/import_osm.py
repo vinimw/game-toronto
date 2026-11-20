@@ -8,6 +8,7 @@ Copyright © OpenStreetMap contributors, licensed ODbL 1.0.
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
 import json
 import math
@@ -123,12 +124,12 @@ def clip_polygon(points, bounds):
     return [ring+[ring[0]]] if len(ring) >= 3 else []
 
 
-def convert_api(raw, source_bytes, bbox):
+def convert_api(raw, source_bytes, bbox, *, dataset="high-park-north", origin=None):
     """Normalize the archived OSM Map API response, using its original node IDs."""
     expected = tuple(raw['bounds'][key] for key in ('minlat','minlon','maxlat','maxlon'))
     if expected != bbox:
         raise ValueError('BBox deve coincidir com o recorte exato do arquivo de origem')
-    origin = {'lat': round((bbox[0]+bbox[2])/2, 7), 'lon': round((bbox[1]+bbox[3])/2, 7)}
+    origin = origin or {'lat': round((bbox[0]+bbox[2])/2, 7), 'lon': round((bbox[1]+bbox[3])/2, 7)}
     lo, hi = project(*bbox[:2], origin, rounded=False), project(*bbox[2:], origin, rounded=False)
     bounds = [lo[0], hi[1], hi[0], lo[1]]
     nodes = {element['id']: element for element in raw['elements'] if element['type'] == 'node'}
@@ -144,7 +145,10 @@ def convert_api(raw, source_bytes, bbox):
         ids = element.get('nodes', [])
         if len(ids) < 2:
             continue
-        kind = classify(tags, len(ids) >= 4 and ids[0] == ids[-1])
+        closed = len(ids) >= 4 and ids[0] == ids[-1]
+        kind = classify(tags, closed)
+        if dataset == 'high-park-expanded' and closed and tags.get('leisure') in ('pitch', 'swimming_pool'):
+            kind = 'sport'
         if kind is None:
             if any(key in tags for key in ('building','natural','waterway','landuse','leisure','highway')):
                 missing.append({'id':osm_id,'reason':'classe não renderizada ou contorno aberto'})
@@ -169,10 +173,11 @@ def convert_api(raw, source_bytes, bbox):
                 continue
             features.append({'kind':kind,'osmType':'way','osmId':osm_id,'part':part,
                              'name':tags.get('name',''),'tags':tags,'points':rounded})
+    classes = ('path','building','green','water','rail') + (('sport',) if dataset == 'high-park-expanded' else ())
     counts = {kind:len({f['osmId'] for f in features if f['kind']==kind})
-              for kind in ('path','building','green','water','rail')}
+              for kind in classes}
     return {
-        'version':2,'mode':'osm','dataset':'high-park-north','origin':origin,'bbox':[round(value, 2) for value in bounds],
+        'version':2,'mode':'osm','dataset':dataset,'origin':origin,'bbox':[round(value, 2) for value in bounds],
         'bboxWgs84':list(bbox),'extractedAt':raw['extractedAt'],'sourceUrl':raw['sourceUrl'],
         'sourceSha256':hashlib.sha256(source_bytes).hexdigest(),'source':'© OpenStreetMap contributors',
         'license':'ODbL 1.0 - https://www.openstreetmap.org/copyright',
@@ -188,15 +193,18 @@ def main() -> int:
                     help="Limites geográficos: latitude sul, longitude oeste, latitude norte, longitude leste")
     ap.add_argument("--input", type=pathlib.Path, help="Ler recorte JSON arquivado da API OSM, sem internet")
     ap.set_defaults(input=ROOT / "tools" / "data" / "high-park-north.osm-source.json")
+    ap.add_argument("--dataset", choices=("high-park-north","high-park-expanded"), default="high-park-north")
+    ap.add_argument("--origin", metavar=("LAT","LON"), type=float, nargs=2)
     ap.add_argument("--output", type=pathlib.Path, default=OUTPUT)
     args = ap.parse_args()
     south, west, north, east = args.bbox
     if not (-90 <= south < north <= 90 and -180 <= west < east <= 180):
         ap.error("BBox inválida; esperado: sul oeste norte leste")
     try:
-        source_bytes = args.input.read_bytes()
+        source_bytes = gzip.decompress(args.input.read_bytes()) if args.input.suffix == ".gz" else args.input.read_bytes()
         raw = json.loads(source_bytes)
-        output = convert_api(raw, source_bytes, tuple(args.bbox))
+        output = convert_api(raw, source_bytes, tuple(args.bbox), dataset=args.dataset,
+                             origin=dict(zip(("lat","lon"), args.origin)) if args.origin else None)
         if len(output["features"]) < 20:
             raise RuntimeError(f"Poucas feições retornadas ({len(output['features'])}). Verifique a bbox ou a API.")
         args.output.parent.mkdir(parents=True, exist_ok=True)

@@ -1,3 +1,6 @@
+import {evaluateTerrainGameplay} from './terrain-gameplay.mjs';
+import {gunzipSync} from 'node:zlib';
+import {createHash} from 'node:crypto';
 import {evaluateMemoryGameplay,memoryCaptureCount} from './memory-gameplay.mjs';
 import {evaluateCoupledCamera} from './coupled-camera-evaluation.mjs';
 import {evaluateAutomaticCamera} from './automatic-camera-evaluation.mjs';
@@ -102,16 +105,17 @@ const safeMessage=message=>String(message)
   .replace(/(bearer\s+|(?:token|password|secret|api[_-]?key)\s*[:=]\s*)[^\s,;]+/gi,'$1[redacted]')
   .slice(0,1200);
 
-async function collectProfile(browser,target,dir,profileId){
+async function collectProfile(browser,target,dir,profileId,expanded=false){
   const profile=reviewProfiles[profileId];
   const page=await browser.newPage({viewport:profile.viewport,deviceScaleFactor:profile.deviceScaleFactor,
     isMobile:profile.mobileViewportSimulation,hasTouch:profile.mobileViewportSimulation,
     locale:'pt-BR',timezoneId:'UTC',serviceWorkers:'block'});
   const url=new URL(target);
   url.searchParams.set('profile',profileId);
+  if(expanded)url.searchParams.set('park','expanded');
   const origin=url.origin;
   const issues=[],captures=[],metrics=[];
-  const selected=points.filter(point=>(point.profile??'desktop')===profileId);
+  const selected=points.filter(point=>(point.profile??'desktop')===profileId&&Boolean(point.expanded)===expanded);
   let geography={status:'unavailable'},motion=null;
   const geographicFiles=[];
   let current=null;
@@ -176,7 +180,8 @@ async function collectProfile(browser,target,dir,profileId){
         console.error('[review] falha em '+point.id+' · '+reason);
       }
     }
-    if(profileId==='desktop'){
+    if(profileId==='desktop'&&expanded)geography=await page.evaluate(()=>window.gameLoveReview.expandedTerrain());
+    if(profileId==='desktop'&&!expanded){
       current='motion-high-park';
       try{
         motion=await evaluate('motion',null,motionDurationMs+12000);
@@ -273,6 +278,24 @@ async function main(){
     const profiles=[];
     for(const id of Object.keys(reviewProfiles))profiles.push(await collectProfile(browser,started.target,bundle,id));
     const [desktop]=profiles;
+    const terrainDesktop=await collectProfile(browser,started.target,bundle,'desktop',true);
+    profiles.push(terrainDesktop,await collectProfile(browser,started.target,bundle,'mobile',true));
+    const terrainReport=terrainDesktop.geography;
+    const terrainFiles=['geography/high-park-expanded.osm-source.json.gz','geography/high-park-hrdem.tif'];
+    await mkdir(join(bundle,'geography'),{recursive:true});
+    const terrainAssets=await Promise.all(terrainFiles.map(file=>readFile(join(root,'tools/data',file.split('/').at(-1)))));
+    const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
+    const terrainPose=terrainDesktop.captures.find(capture=>capture.id==='43-expanded-overview');
+    const verified=hash(gunzipSync(terrainAssets[0]))===terrainPose?.sourceSha256&&
+      hash(terrainAssets[1])===terrainReport.source?.sourceSha256;
+    await Promise.all(terrainFiles.map((file,i)=>writeFile(join(bundle,file),terrainAssets[i])));
+    terrainReport.snapshots={files:terrainFiles,verified};
+    terrainReport.gameplay=await evaluateTerrainGameplay(browser,started.target,safeMessage);
+    checks.expandedTerrain={status:verified&&terrainReport.gameplay.status==='passed'?terrainReport.status:'failed',
+      report:'high-park-terrain-review.json'};
+    console.log('[review] High Park ampliado: '+checks.expandedTerrain.status);
+    if(checks.expandedTerrain.status!=='passed')terrainDesktop.issues.push({type:'expanded-terrain-failed',
+      message:'Consulte high-park-terrain-review.json.'});
     const gameplay=await captureMobileGameplay(browser,started.target,bundle,safeMessage);
     checks.touch=gameplay.touch;
     const {geography,geographicFiles,motion}=desktop;
@@ -329,6 +352,7 @@ async function main(){
     const json=(file,value)=>writeFile(join(bundle,file),JSON.stringify(value,null,2)+'\n');
     await Promise.all([json('metadata.json',metadata),json('performance.json',performance),json('console-errors.json',issues),json('geographic-correspondence.json',geography)]);
 
+    await json('high-park-terrain-review.json',terrainReport);
     await json('memory-gameplay.json',memoryGameplay);
     await json('movement-diagnostics.json',movementTrace);
     await json('automatic-camera-diagnostics.json',automaticCamera);
@@ -346,7 +370,7 @@ async function main(){
 
     // Explicit allowlist. Nothing outside this staging directory can enter the archive.
     const files=['metadata.json','performance.json','console-errors.json','geographic-correspondence.json',
-      'report.html','memory-gameplay.json',...movementFiles,...standaloneFiles,...geographicFiles,...captures.flatMap(capture=>capture.file?[capture.file]:[]),...comparisonFiles];
+      'report.html','high-park-terrain-review.json',...terrainFiles,'memory-gameplay.json',...movementFiles,...standaloneFiles,...geographicFiles,...captures.flatMap(capture=>capture.file?[capture.file]:[]),...comparisonFiles];
     if((await run('zip',['-q','-X',archive,...files],{cwd:bundle})).code!==0)
       throw new Error('Falha ao criar o ZIP.');
     if((await run('unzip',['-tq',archive],{quiet:true})).code!==0)

@@ -48,16 +48,16 @@ export function resolveGameplayCamera(anchor,view,stats,previous,dt,settings){
     const horizontal=length*Math.cos(angle);
     return [anchor[0]+sinYaw*horizontal,anchor[1]+length*Math.sin(angle),anchor[2]+cosYaw*horizontal];
   };
-  const feet=[anchor[0],.15,anchor[2]];
+  const feet=[anchor[0],stats.terrain?anchor[1]-1.33:.15,anchor[2]];
   const lowerTrace={};
   const length=(from,to)=>Math.hypot(to[0]-from[0],to[1]-from[1],to[2]-from[2]);
   const sweep=(angle,radius=.22,trace={})=>{
     const desired=at(angle);
-    const safe=resolveCamera(anchor,desired,stats.cameraObstacles,radius,trace);
+    const safe=resolveCamera(anchor,desired,stats.cameraObstacles,radius,trace,stats.terrain);
     const arm=trace.obstacle?length(anchor,safe):distance;
     // In steep views, the pivot may see above a roof while the legs are
     // still blocked. Shorten the boom conservatively along that lower ray.
-    const lowerSafe=resolveCamera(feet,desired,stats.cameraObstacles,.08,lowerTrace);
+    const lowerSafe=resolveCamera(feet,desired,stats.cameraObstacles,.08,lowerTrace,stats.terrain);
     if(!lowerTrace.obstacle)return arm;
     if(!trace.obstacle)trace.obstacle=lowerTrace.obstacle;
     return Math.min(arm,distance*length(feet,lowerSafe)/length(feet,desired));

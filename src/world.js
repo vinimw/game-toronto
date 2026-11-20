@@ -8,6 +8,8 @@ import {buildDemoCafe} from './demo-cafe.js';
 import {plantPark} from './park-vegetation.js';
 import {addPathBatches,terrainTexture,worldUVs} from './park-surfaces.js';
 import {pathWidth} from './visual-settings.js';
+import {terrainBuildingBatches} from './terrain-buildings.js';
+import {addTerrainChunks,densify} from './high-park-terrain.js';
 import {parkEnvironment} from './park-environment.js';
 const material=c=>new THREE.MeshLambertMaterial({color:c,side:THREE.DoubleSide});
 function flat(points,height,color){
@@ -30,13 +32,18 @@ export function buildWorld(scene,world,portals=[],evidence){
   scene.background=new THREE.Color(style.sky);scene.fog=new THREE.Fog(style.sky,...style.fog);
   const hemi=new THREE.HemisphereLight(style.hemisphere.sky,style.hemisphere.ground,style.hemisphere.strength);scene.add(hemi);
   const sun=new THREE.DirectionalLight(style.sun.color,style.sun.strength);sun.position.set(...style.sun.position);scene.add(sun);
-  const texture=terrainTexture(real), groundGeometry=new THREE.PlaneGeometry(8000,8000);
-  worldUVs(groundGeometry,true,real);
-  const ground=new THREE.Mesh(groundGeometry,new THREE.MeshLambertMaterial({color:style.ground,map:texture}));
-  ground.rotation.x=-Math.PI/2;ground.position.y=-.1;scene.add(ground);
+  const {terrain}=world;
+  const texture=terrainTexture(real);
+  if(!terrain){
+    const groundGeometry=new THREE.PlaneGeometry(8000,8000);
+    worldUVs(groundGeometry,true,real);
+    const ground=new THREE.Mesh(groundGeometry,new THREE.MeshLambertMaterial({color:style.ground,map:texture}));
+    ground.rotation.x=-Math.PI/2;ground.position.y=-.1;scene.add(ground);
+  }
   const greens=world.features.filter(f=>f.kind==='green'),paths=world.features.filter(f=>f.kind==='path'||f.kind==='rail');
   const buildings=world.features.filter(f=>f.kind==='building'),waters=world.features.filter(f=>f.kind==='water');
-  for(const feature of greens){
+  if(terrain)addTerrainChunks(scene,terrain,[...world.features.filter(f=>f.kind==='sport'),...greens],style,texture);
+  else for(const feature of greens){
     const wooded=feature.tags?.landuse==='forest'||(real&&feature.tags?.natural==='wood');
     const height=real&&feature.tags?.landuse==='grass'?-.021:real&&wooded?-.023:-.025;
     const mesh=flat(feature.points,height,wooded?style.woodland:style.meadow);
@@ -44,32 +51,39 @@ export function buildWorld(scene,world,portals=[],evidence){
     evidence?.polygon(feature,mesh);
   }
   waters.forEach(feature=>{
-    const mesh=flat(feature.points,.02,style.water);scene.add(mesh);
+    const mesh=flat(feature.points,terrain?.waterLevel(feature.points)??.02,style.water);scene.add(mesh);
     evidence?.polygon(feature,mesh);
   });
-  addPathBatches(scene,paths,style,pathWidth,texture,evidence?.strip,real);
+  const routeMeshes=terrain?paths.map(feature=>({...feature,points:densify(feature.points)})):paths;
+  addPathBatches(scene,routeMeshes,style,pathWidth,texture,evidence?.strip,real,terrain);
   const furniture=[],cameraObstacles=[],clearings=[];
-  const landmarks=[];
+  const landmarks=[],buildingBatches=terrain?terrainBuildingBatches(scene):null;
   buildings.forEach((feature,index)=>{
     const definition=findLandmark(world,feature);
-    const blocker={kind:'building',id:feature.osmId??null,points:feature.points};
+    const floor=terrain?Math.min(...feature.points.map(point=>terrain.at(...point))):0;
+    const blocker={kind:'building',id:feature.osmId??null,points:feature.points,minHeight:floor};
     if(world.mode==='demo'&&feature.visual==='park-cafe'){
       const cafe=buildDemoCafe(feature);
       scene.add(cafe.group);furniture.push(...cafe.obstacles);
       cameraObstacles.push({...blocker,height:cafe.ridge});
     }else if(definition){
       const model=definition.build(feature);
-      scene.add(model.group);
+      model.group.position.y+=floor;scene.add(model.group);
       landmarks.push({definition,model});
       evidence?.polygon(feature,model.roof);
-      cameraObstacles.push({...blocker,height:model.height});
+      cameraObstacles.push({...blocker,height:model.height+floor});
       if(model.forecourt)clearings.push(model.forecourt);
     }else{
       const mesh=makeBuilding(feature,index);
-      if(mesh){scene.add(mesh);evidence?.polygon(feature,mesh.children[1]);}
-      cameraObstacles.push({...blocker,height:buildingHeight(feature.tags)});
+      if(mesh){
+        mesh.position.y=floor;
+        if(buildingBatches)buildingBatches.add(mesh,feature.points[0]);
+        else {scene.add(mesh);evidence?.polygon(feature,mesh.children[1]);}
+      }
+      cameraObstacles.push({...blocker,height:buildingHeight(feature.tags)+floor});
     }
   });
+  buildingBatches?.attach();
   cameraObstacles.push(...furniture);
   const collisionFeatures=furniture.length?[...world.features,...furniture]:world.features;
   const canWalk=createWalkTest(collisionFeatures,world.bbox||[-1000,-1000,1000,1000]);
@@ -89,7 +103,7 @@ export function buildWorld(scene,world,portals=[],evidence){
   }
   const regionId=scene.name.startsWith('region:')?scene.name.slice('region:'.length):null;
   const memoryPoints=resolveMemoryPoints(regionId,world,canWalk);
-  const animateMemoryMarkers=addMemoryMarkers(scene,memoryPoints);
+  const animateMemoryMarkers=addMemoryMarkers(scene,memoryPoints,terrain);
   for(const portal of world.mode==='osm'?[]:portals){
     const gate=new THREE.Group();gate.name=portal.id;gate.position.set(portal.position[0],0,portal.position[1]);
     const gateMaterial=material(0x85664c);
@@ -107,7 +121,7 @@ export function buildWorld(scene,world,portals=[],evidence){
       [px-1.8,pz-.125],[px+1.8,pz-.125],[px+1.8,pz+.125],[px-1.8,pz+.125],
     ]});
   }
-  return {environment:environment.id,canWalk,cameraObstacles,cameraVolumes,setCameraOccluders:vegetation.setCameraOccluders,setQuality,setDetailFocus,vegetationMetrics,memoryPoints,animateMemoryMarkers,trees,
+  return {terrain,environment:environment.id,canWalk,cameraObstacles,cameraVolumes,setCameraOccluders:vegetation.setCameraOccluders,setQuality,setDetailFocus,vegetationMetrics,memoryPoints,animateMemoryMarkers,trees,
     landmarks:landmarks.map(({definition:{build,...identity}})=>identity),
     counts:{paths:paths.length,buildings:buildings.length,water:waters.length,trees}};
 }

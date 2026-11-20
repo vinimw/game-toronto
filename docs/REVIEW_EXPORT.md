@@ -222,3 +222,10 @@ Toronto e reabrir a página. O diagnóstico fica em
 `memory-gameplay.json`. A câmera usa o modo padrão do jogo durante o
 ensaio. O ponto inicial do teste é posicionado pelo modo de desenvolvimento
 para repetir o trecho próximo ao Nature Centre.
+
+
+A entrega geográfica ampliada adiciona dez capturas do modo
+`?park=expanded` e `high-park-terrain-review.json`. O PDF de rota do
+trenzinho é uma referência para a entrega futura. O ZIP inclui os
+arquivos-fonte OSM e HRDEM usados no relevo. As capturas e o benchmark
+do recorte norte continuam em seus perfis anteriores.

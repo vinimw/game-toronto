@@ -4,7 +4,7 @@ const natureCentre={
   id:'high-park:nature-centre',
   label:'High Park Nature Centre',
   region:'high-park',
-  dataset:'high-park-north',
+  datasets:['high-park-north','high-park-expanded'],
   osm:{type:'way',id:43805272},
   geographicAnchor:{lat:43.65126304,lon:-79.46370879},
   detail:{low:'structure',balanced:'facade',high:'grounds'},
@@ -17,6 +17,6 @@ const landmarks=[natureCentre];
 
 export function findLandmark(world,feature){
   if(world.mode!=='osm'||feature.kind!=='building')return null;
-  return landmarks.find(landmark=>landmark.dataset===world.dataset&&
+  return landmarks.find(landmark=>landmark.datasets.includes(world.dataset)&&
     landmark.osm.type===feature.osmType&&landmark.osm.id===feature.osmId)??null;
 }

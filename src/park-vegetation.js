@@ -130,7 +130,7 @@ export function plantPark(scene,world,portals,blocked,clearings=[],environment=p
   function add(shape,x,y,z,sx,sy,sz,tint,treeId,rotation){
     const entries=groups.get(shape)||[];
     if(!groups.has(shape))groups.set(shape,entries);
-    dummy.position.set(x,y,z);dummy.scale.set(sx,sy,sz);dummy.rotation.y=rotation??rand()*Math.PI*2;dummy.updateMatrix();
+    dummy.position.set(x,y+(world.terrain?.at(x,z)??0),z);dummy.scale.set(sx,sy,sz);dummy.rotation.y=rotation??rand()*Math.PI*2;dummy.updateMatrix();
     entries.push({x,z,treeId,matrix:dummy.matrix.clone(),color:color.set(tint).multiplyScalar(.86+rand()*.24).clone()});
   }
   const trees=[], cameraVolumes=[];
@@ -343,6 +343,7 @@ export function plantPark(scene,world,portals,blocked,clearings=[],environment=p
       detailInstancesEnabled:detailsEnabled,grid:{bounds,order:'Norte a sul nas linhas, oeste a leste nas colunas.',
         treeCounts:grid('trunk','sakuraWood'),shrubInstanceCounts:grid('shrub')}};
   }
+  if(world.terrain)for(const {center} of cameraVolumes)center[1]+=world.terrain.at(center[0],center[2]);
   return {trees:trees.length,cameraVolumes,setCameraOccluders,vegetationMetrics:real?vegetationMetrics:undefined,
     setDetailFocus:real?updateDetails:undefined,setQuality(next){
     profile=Object.hasOwn(qualityProfiles,next)?next:'balanced';

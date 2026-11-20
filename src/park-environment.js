@@ -31,7 +31,7 @@ export const environmentPresets={
 const demo={id:'demo',style:parkStyle};
 
 export function parkEnvironment(world){
-  const id=world.environment??(world.dataset==='high-park-north'?'high-park-sakura':
+  const id=world.environment??(['high-park-north','high-park-expanded'].includes(world.dataset)?'high-park-sakura':
     world.mode==='osm'?'high-park-default':null);
   const preset=environmentPresets[id];
   if(!preset||world.mode!=='osm'&&id!=='toronto-default')return demo;

@@ -34,10 +34,12 @@ export function overlapsPolygon(point, polygon, radius) {
 }
 
 export function createWalkTest(features, bbox) {
-  const obstacles = features.filter(f => ['water', 'building'].includes(f.kind));
+  const obstacles = features.filter(f => ['water', 'building'].includes(f.kind)||f.tags?.leisure==='swimming_pool')
+    .map(feature=>({points:feature.points,bounds:cameraBoundsOf(feature)}));
   return (x, z, radius = PLAYER_RADIUS) => Number.isFinite(x) && Number.isFinite(z) && Number.isFinite(radius) && radius >= 0 &&
     x > bbox[0] + radius && x < bbox[2] - radius && z > bbox[1] + radius && z < bbox[3] - radius &&
-    !obstacles.some(f => overlapsPolygon([x, z], f.points, radius));
+    !obstacles.some(({points,bounds:[minX,minZ,maxX,maxZ]}) =>
+      x>=minX-radius&&x<=maxX+radius&&z>=minZ-radius&&z<=maxZ+radius&&overlapsPolygon([x,z],points,radius));
 }
 
 // Small steps prevent tunnelling; independent axes allow sliding along walls.
@@ -78,7 +80,7 @@ function cameraBoundsOf(obstacle){
 
 // Sweep a small camera volume from the player toward the smoothed camera.
 // Water is intentionally excluded: only raised buildings obstruct the view.
-export function resolveCamera(anchor, desired, buildings, radius = .22, trace) {
+export function resolveCamera(anchor, desired, buildings, radius = .22, trace, terrain) {
   if (trace) trace.obstacle = null;
   if (![...anchor, ...desired].every(Number.isFinite)) return [...anchor];
   const delta = desired.map((v, i) => v - anchor[i]);
@@ -88,13 +90,13 @@ export function resolveCamera(anchor, desired, buildings, radius = .22, trace) {
     return minX-radius<=Math.max(anchor[0],desired[0])&&maxX+radius>=Math.min(anchor[0],desired[0])&&
       minZ-radius<=Math.max(anchor[2],desired[2])&&maxZ+radius>=Math.min(anchor[2],desired[2]);
   });
-  if(!candidates.length&&Math.min(anchor[1],desired[1])>=radius)return desired;
+  if(!terrain&&!candidates.length&&Math.min(anchor[1],desired[1])>=radius)return desired;
   let safe = [...anchor];
   for (let i = 1; i <= steps; i++) {
     const point = anchor.map((v, axis) => v + delta[axis] * i / steps);
     const obstacle = candidates.find(f => point[1] <= f.height + radius && point[1] >= (f.minHeight??0)-radius &&
       overlapsPolygon([point[0], point[2]], f.points, radius));
-    if (point[1] < radius || obstacle) {
+    if (point[1] < (terrain?.at(point[0],point[2])??0)+radius || obstacle) {
       if (trace) trace.obstacle = obstacle ?? {kind:'ground'};
       break;
     }

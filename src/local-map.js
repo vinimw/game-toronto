@@ -16,8 +16,8 @@ export function drawLocalMap(canvas,world,portals,position,memories=[]){
   ctx.fillStyle='#dce2cd';ctx.fillRect(left,top,right-left,bottom-top);
   ctx.save();
   ctx.beginPath();ctx.rect(left,top,right-left,bottom-top);ctx.clip();
-  const fills={green:'#b7cb9b',water:'#9dc9c7',building:'#baaa97'};
-  for(const kind of ['green','water','building','path','rail']){
+  const fills={green:'#b7cb9b',water:'#9dc9c7',building:'#baaa97',sport:'#a6b87b'};
+  for(const kind of ['green','sport','water','building','path','rail']){
     for(const feature of world.features){
       if(feature.kind!==kind||!feature.points.length)continue;
       ctx.beginPath();

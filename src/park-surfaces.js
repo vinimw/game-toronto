@@ -115,7 +115,7 @@ function appendShoulders(a,b,half,width,length,{positions,colors}){
   }
 }
 
-export function addPathBatches(scene,paths,style,pathWidth,texture,onGeometry,real=false){
+export function addPathBatches(scene,paths,style,pathWidth,texture,onGeometry,real=false,terrain){
   const batches=new Map(), shoulders=new Map(), featherPositions=[], featherColors=[];
   const evidence=onGeometry?new Map():null;
   const add=(points,width,height,color)=>{
@@ -148,7 +148,12 @@ export function addPathBatches(scene,paths,style,pathWidth,texture,onGeometry,re
       evidence.get(color).push({feature,...strip});
     }
   }
+  function drape(vertices){
+    if(!terrain)return;
+    for(let i=0;i<vertices.length;i+=3)vertices[i+1]+=terrain.at(vertices[i],vertices[i+2]);
+  }
   for(const [color,vertices] of batches){
+    drape(vertices);
     const geometry=new THREE.BufferGeometry();
     geometry.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));
     geometry.computeVertexNormals();worldUVs(geometry,false,real);
@@ -159,6 +164,7 @@ export function addPathBatches(scene,paths,style,pathWidth,texture,onGeometry,re
   if(!real)shoulders.set(style.verge,{positions:featherPositions,colors:featherColors});
   for(const [color,{positions,colors}] of shoulders){
     if(!positions.length)continue;
+    drape(positions);
     const geometry=new THREE.BufferGeometry();
     geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
     geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,4));

@@ -88,12 +88,14 @@ const manager=new SceneManager({manifest:regionManifest,loadRegion,buildScene:bu
   },
   onActivate(active){
     world=active.world;stats=active.stats;stats.setQuality(quality);
+    avatar.root.position.y=stats.terrain?.at(avatar.root.position.x,avatar.root.position.z)??0;
     current.yaw=active.yaw;Object.assign(view,current);recentering.reset();coupledRig.reset(active.yaw);cameraClearance=null;
     note=world.mode==='osm'?'Geometria de OpenStreetMap (© colaboradores OSM)':(world.fallbackReason?'Cenário ilustrativo · '+world.fallbackReason:'Cenário demonstrativo ilustrativo · não representa a geografia real');
     const source=$('data-status');
     source.dataset.origin=world.mode==='osm'?'osm':'demo';
     source.textContent=world.mode==='osm'?'OSM REAL':'DEMO';
     $('osm-attribution').classList.toggle('hidden',world.mode!=='osm');
+    if(stats.terrain){source.textContent='OSM · PRÉVIA';note+=' · Altimetria HRDEM (Recursos Naturais do Canadá)';}
     source.title=note;$('map-note').textContent=`${regionManifest[active.id].name} · ${note}`;
     $('place-name').textContent=regionManifest[active.id].name;
     $('brand-region').textContent=active.id==='toronto'?'TORONTO · DEMONSTRAÇÃO':'TORONTO · HIGH PARK';
@@ -250,7 +252,7 @@ const target=new THREE.Vector3();
 if(reviewCapture)window.stageCameraReview=([x,z],yaw)=>{
   if(manager.loading||manager.active?.id!=='high-park'||world.mode!=='osm'||
     !stats.canWalk(x,z)||!Number.isFinite(yaw))throw new Error('Invalid High Park review pose.');
-  avatar.root.position.set(x,0,z);
+  avatar.root.position.set(x,stats.terrain?.at(x,z)??0,z);
   avatar.root.rotation.y=current.yaw=yaw;
   current.pitch=cameraSettings.pitch;current.distance=cameraSettings.distance;
   Object.assign(view,current);
@@ -264,10 +266,10 @@ function inspectCameraBody(){
   const destination=camera.position.toArray();
   let inFrame=true,lineOfSight=true;
   for(const height of bodySampleHeights){
-    const point=[target.x,height,target.z];
+    const point=[target.x,avatar.root.position.y+height,target.z];
     reviewPoint.fromArray(point).project(camera);
     inFrame&&=Math.abs(reviewPoint.x)<1&&Math.abs(reviewPoint.y)<1&&Math.abs(reviewPoint.z)<1;
-    const clear=resolveCamera(point,destination,stats.cameraObstacles,0);
+    const clear=resolveCamera(point,destination,stats.cameraObstacles,0,null,stats.terrain);
     lineOfSight&&=clear.every((value,i)=>Math.abs(value-destination[i])<1e-6);
   }
   return {inFrame,lineOfSight};
@@ -294,7 +296,10 @@ function animate(now){
   const running=inputs.keys.has('shift')||inputs.runTouch;
   const previousPosition=[avatar.root.position.x,avatar.root.position.z];
   const motion=player.move(previousPosition,{...command,running,dt,canWalk:stats.canWalk});
-  if(finitePoint(motion.position))avatar.root.position.set(motion.position[0],0,motion.position[1]);
+  if(finitePoint(motion.position)){
+    const [x,z]=motion.position;
+    avatar.root.position.set(x,stats.terrain?.at(x,z)??0,z);
+  }
   if(turn)avatar.root.rotation.y=turn.locomotionHeading;
   if(!coupled){
     const recenteredYaw=blocked?null:recentering.update({
@@ -311,7 +316,7 @@ function animate(now){
 
   // Translate the whole orbit with the avatar. Smoothing its world position
   // would temporarily rotate the view after sideways motion.
-  target.set(avatar.root.position.x,1.48,avatar.root.position.z);
+  target.set(avatar.root.position.x,avatar.root.position.y+1.48,avatar.root.position.z);
   cameraClearance=resolveGameplayCamera(target.toArray(),view,stats,cameraClearance,dt,cameraSettings);
   camera.position.fromArray(cameraClearance.position);
   camera.lookAt(target);
@@ -366,7 +371,7 @@ Modo: ${recentering.mode} · ${diagnostics.followState}`;
   if(import.meta.env.DEV)renderer.domElement.dataset.resources=JSON.stringify({...renderer.info.memory,
     region:manager.active.id,objects:manager.active.scene.children.length,calls:renderer.info.render.calls,triangles:renderer.info.render.triangles,avatars:manager.active.scene.children.filter(o=>o===avatar.root).length});
   if(reviewCapture)renderer.domElement.dataset.reviewPose=JSON.stringify({
-    sceneId:manager.active.scene.name,origin:world.mode==='osm'?'OSM REAL':'DEMO',
+    sceneId:manager.active.scene.name,dataset:world.dataset??null,origin:world.mode==='osm'?'OSM REAL':'DEMO',
     sourceSha256:world.sourceSha256??null,bboxWgs84:world.bboxWgs84??null,geographicOrigin:world.origin??null,
     position:{local:avatar.root.position.toArray(),headingRadians:avatar.root.rotation.y},
     orbit:{yaw:cameraYaw,pitch:view.pitch,renderedYaw:diagnostics.cameraYaw},

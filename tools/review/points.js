@@ -51,3 +51,21 @@ points.push(
   sakuraView('35-high-park-sakura-mobile','West Road · floração em viewport mobile',[-67,31.5],
     [10.3,3.35,-6.4],[-5.3,2.85,4],'mobile'),
 );
+
+function terrainView(id,label,[x,z],feature,eye,look,profile='desktop'){
+  const lat=43.65235,lon=-79.465;
+  return {id,label,region:'high-park',entry:'toronto-gate',profile,expanded:true,
+    osm:{geo:[lat-z/111320,lon+x/(111320*Math.cos(lat*Math.PI/180))],feature,eye,look,heading:Math.PI}};
+}
+points.push(
+  terrainView('36-expanded-north-entry','Prévia geográfica · entrada norte',[-22,-105],174188399,[0,3.8,-8],[0,1.5,11]),
+  terrainView('37-expanded-sports','Prévia geográfica · área esportiva',[-92,345],14344509,[19,31,-29],[-44,0,15]),
+  terrainView('38-expanded-tennis','Prévia geográfica · área das quadras', [60,176],1116261446,[-8,15,-17],[9,0,16]),
+  terrainView('39-expanded-west-road','Prévia geográfica · West Road',[-65.33,38.51],14344426,[2,5,-10],[-12,1.8,20]),
+  terrainView('40-expanded-cherry-hill','Prévia geográfica · Cherry Hill',[-167.65,729.83],871510614,[9,6,-13],[-36,0,43]),
+  terrainView('41-expanded-pond','Prévia geográfica · Grenadier Pond',[-173,1050],174225267,[1,6,-12],[-88,0,8]),
+  terrainView('42-expanded-hillside','Prévia geográfica · Hillside Gardens e Maple Leaf',[-123,1017],251569209,[22,23,-18],[-24,0,9]),
+  {...terrainView('43-expanded-overview','Prévia geográfica · parque ampliado ↑ N',[-22,-105],14344414,[0,0,0],[0,0,0]),projection:'orthographic'},
+  terrainView('44-expanded-pond-mobile','Prévia geográfica · Grenadier Pond mobile',[-173,1050],174225267,[1,5,-9],[-52,0,10],'mobile'),
+  terrainView('45-expanded-north-mobile','Prévia geográfica · entrada norte mobile',[-22,-105],174188399,[0,3.8,-8],[0,1.5,11],'mobile'),
+);

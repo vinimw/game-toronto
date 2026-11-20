@@ -1,6 +1,7 @@
 import {makeDemoWorld} from './demo-world.js';
 import {latLonToLocal,nearestOnPath} from './geo.js';
 import {createWalkTest} from './movement.js';
+import {createTerrain} from './high-park-terrain.js';
 import {HIGH_PARK_GATE} from './regions.js';
 
 const snapshotUrl='/data/high-park.osm.json';
@@ -13,7 +14,7 @@ export function pedestrianPath(feature){
 
 export function prepareHighParkMap(data){
   const {origin,bbox,bboxWgs84,features}=data;
-  if(data.version!==2||data.mode!=='osm'||data.dataset!=='high-park-north'||
+  if(data.version!==2||data.mode!=='osm'||!['high-park-north','high-park-expanded'].includes(data.dataset)||
     !data.sourceUrl?.startsWith('https://api.openstreetmap.org/api/0.6/map.json?')||
     !/^[0-9a-f]{64}$/.test(data.sourceSha256)||!Number.isFinite(Date.parse(data.extractedAt))||
     ![origin?.lat,origin?.lon].every(Number.isFinite)||bbox?.length!==4||!bbox.every(Number.isFinite)||
@@ -37,6 +38,18 @@ export function prepareHighParkMap(data){
 export async function loadWorld(){
   if(globalThis.location && new URLSearchParams(location.search).get('map')==='demo')
     return {...makeDemoWorld(),fallbackReason:'DEMO solicitado por URL.'};
+  const expanded=globalThis.location&&new URLSearchParams(location.search).get('park')==='expanded';
+  if(expanded){
+    const [mapResponse,terrainResponse]=await Promise.all([
+      fetch('/data/high-park-expanded.osm.json'),fetch('/data/high-park-terrain.json'),
+    ]);
+    if(!mapResponse.ok||!terrainResponse.ok)throw new Error('Prévia ampliada de High Park indisponível.');
+    const world=prepareHighParkMap(await mapResponse.json());
+    if(world.dataset!=='high-park-expanded')throw new Error('Recorte ampliado inválido.');
+    const terrainData=await terrainResponse.json();
+    return {...world,terrain:createTerrain(terrainData,world.bbox,world.bboxWgs84),terrainData,
+      label:'High Park ampliado · prévia geográfica'};
+  }
   try {
     const response=await fetch(snapshotUrl,{cache:'no-store',headers:{Accept:'application/json'}});
     if(!response.ok)throw new Error('Recorte OSM indisponível.');
