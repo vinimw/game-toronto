@@ -88,6 +88,8 @@ const manager=new SceneManager({manifest:regionManifest,loadRegion,buildScene:bu
   },
   onActivate(active){
     world=active.world;stats=active.stats;stats.setQuality(quality);
+    renderer.shadowMap.enabled=Boolean(stats.entranceArt);
+    renderer.shadowMap.type=THREE.PCFShadowMap;
     avatar.root.position.y=stats.terrain?.at(avatar.root.position.x,avatar.root.position.z)??0;
     current.yaw=active.yaw;Object.assign(view,current);recentering.reset();coupledRig.reset(active.yaw);cameraClearance=null;
     note=world.mode==='osm'?'Geometria de OpenStreetMap (© colaboradores OSM)':(world.fallbackReason?'Cenário ilustrativo · '+world.fallbackReason:'Cenário demonstrativo ilustrativo · não representa a geografia real');
@@ -371,7 +373,7 @@ Modo: ${recentering.mode} · ${diagnostics.followState}`;
   if(import.meta.env.DEV)renderer.domElement.dataset.resources=JSON.stringify({...renderer.info.memory,
     region:manager.active.id,objects:manager.active.scene.children.length,calls:renderer.info.render.calls,triangles:renderer.info.render.triangles,avatars:manager.active.scene.children.filter(o=>o===avatar.root).length});
   if(reviewCapture)renderer.domElement.dataset.reviewPose=JSON.stringify({
-    sceneId:manager.active.scene.name,dataset:world.dataset??null,origin:world.mode==='osm'?'OSM REAL':'DEMO',
+    sceneId:manager.active.scene.name,dataset:world.dataset??null,entranceArt:stats.entranceArt??null,origin:world.mode==='osm'?'OSM REAL':'DEMO',
     sourceSha256:world.sourceSha256??null,bboxWgs84:world.bboxWgs84??null,geographicOrigin:world.origin??null,
     position:{local:avatar.root.position.toArray(),headingRadians:avatar.root.rotation.y},
     orbit:{yaw:cameraYaw,pitch:view.pitch,renderedYaw:diagnostics.cameraYaw},

@@ -1,3 +1,4 @@
+import {entranceComparison,entranceComparisonHtml,recordEntranceWalk} from './entrance-art.mjs';
 import {evaluateTerrainGameplay} from './terrain-gameplay.mjs';
 import {gunzipSync} from 'node:zlib';
 import {createHash} from 'node:crypto';
@@ -105,7 +106,7 @@ const safeMessage=message=>String(message)
   .replace(/(bearer\s+|(?:token|password|secret|api[_-]?key)\s*[:=]\s*)[^\s,;]+/gi,'$1[redacted]')
   .slice(0,1200);
 
-async function collectProfile(browser,target,dir,profileId,expanded=false){
+async function collectProfile(browser,target,dir,profileId,expanded=false,legacyEntrance=false){
   const profile=reviewProfiles[profileId];
   const page=await browser.newPage({viewport:profile.viewport,deviceScaleFactor:profile.deviceScaleFactor,
     isMobile:profile.mobileViewportSimulation,hasTouch:profile.mobileViewportSimulation,
@@ -113,9 +114,10 @@ async function collectProfile(browser,target,dir,profileId,expanded=false){
   const url=new URL(target);
   url.searchParams.set('profile',profileId);
   if(expanded)url.searchParams.set('park','expanded');
+  if(legacyEntrance)url.searchParams.set('entrance','legacy');
   const origin=url.origin;
   const issues=[],captures=[],metrics=[];
-  const selected=points.filter(point=>(point.profile??'desktop')===profileId&&Boolean(point.expanded)===expanded);
+  const selected=points.filter(point=>(point.profile??'desktop')===profileId&&Boolean(point.expanded)===expanded&&Boolean(point.legacyEntrance)===legacyEntrance);
   let geography={status:'unavailable'},motion=null;
   const geographicFiles=[];
   let current=null;
@@ -180,7 +182,7 @@ async function collectProfile(browser,target,dir,profileId,expanded=false){
         console.error('[review] falha em '+point.id+' · '+reason);
       }
     }
-    if(profileId==='desktop'&&expanded)geography=await page.evaluate(()=>window.gameLoveReview.expandedTerrain());
+    if(profileId==='desktop'&&expanded&&!legacyEntrance)geography=await page.evaluate(()=>window.gameLoveReview.expandedTerrain());
     if(profileId==='desktop'&&!expanded){
       current='motion-high-park';
       try{
@@ -279,7 +281,9 @@ async function main(){
     for(const id of Object.keys(reviewProfiles))profiles.push(await collectProfile(browser,started.target,bundle,id));
     const [desktop]=profiles;
     const terrainDesktop=await collectProfile(browser,started.target,bundle,'desktop',true);
-    profiles.push(terrainDesktop,await collectProfile(browser,started.target,bundle,'mobile',true));
+    profiles.push(terrainDesktop,await collectProfile(browser,started.target,bundle,'mobile',true),
+      await collectProfile(browser,started.target,bundle,'desktop',true,true),
+      await collectProfile(browser,started.target,bundle,'mobile',true,true));
     const terrainReport=terrainDesktop.geography;
     const terrainFiles=['geography/high-park-expanded.osm-source.json.gz','geography/high-park-hrdem.tif'];
     await mkdir(join(bundle,'geography'),{recursive:true});
@@ -310,6 +314,18 @@ async function main(){
       for(const message of scenario.errors)issues.push({type:'memory-gameplay-browser-error',scenario:scenario.id,message});
     }
     const metrics=profiles.flatMap(result=>result.metrics);
+    const matchedEntrance=entranceComparison(captures);
+    const entranceWalk=await recordEntranceWalk(browser,started.target,bundle,safeMessage);
+    const entranceStatus=matchedEntrance.every(pair=>pair.matched)&&entranceWalk.status==='passed'?'passed':'failed';
+    checks.entranceArt={status:entranceStatus,report:'north-entrance-art.json'};
+    console.log('[review] Entrada norte: '+(entranceWalk.reason??entranceStatus));
+    if(entranceStatus!=='passed')issues.push({type:'entrance-art-failed',message:entranceWalk.reason??'Enquadramentos divergentes.'});
+    const photo='reference/high-park-gates-sookie.jpg';
+    await mkdir(join(bundle,'reference'),{recursive:true});
+    await writeFile(join(bundle,photo),await readFile(join(root,'tools/art',photo)));
+    const entranceFiles=[photo,'north-entrance-comparison.html','north-entrance-art.json',
+      ...(entranceWalk.file?[entranceWalk.file]:[])];
+    await writeFile(join(bundle,'north-entrance-comparison.html'),entranceComparisonHtml(matchedEntrance,entranceWalk));
     const movementTrace=await evaluateMovement(browser,started.target,bundle,cameraEvaluation,Number(videoFps));
     checks.movement={status:movementTrace.status,report:'movement-diagnostics.json'};
     if(movementTrace.status!=='passed')issues.push({type:'movement-diagnostics-failed',
@@ -343,7 +359,7 @@ async function main(){
       ...(prior?{baseline:baselineIdentity(prior)}:{}),
       reproducibility:{animationTimeSeconds:0,lighting:'Iluminação fixa da cena, sem relógio de dia.',
         proceduralSeedPolicy:'Sementes fixas definidas no gerador versionado pelo commit Git.'},
-      viewport,resolution:viewport,captures,geographicEvidence:geographicFiles,
+      viewport,resolution:viewport,captures,geographicEvidence:geographicFiles,entranceComparison:'north-entrance-comparison.html',
       video:cameraEvaluation?{status:movementTrace.status==='passed'&&automaticCamera.status==='passed'&&coupledPrototype.status==='passed'&&coupledCamera.status==='passed'?'validated':'failed',files:videos,encodingFps:Number(videoFps)}
         :{status:'not-generated',reason:'Use --camera-evaluation para gravar os clipes.'}};
     const performance={schemaVersion:2,runtime,environment:'Navegador automatizado. Os resultados não equivalem ao desempenho em dispositivos móveis reais.',
@@ -352,6 +368,7 @@ async function main(){
     const json=(file,value)=>writeFile(join(bundle,file),JSON.stringify(value,null,2)+'\n');
     await Promise.all([json('metadata.json',metadata),json('performance.json',performance),json('console-errors.json',issues),json('geographic-correspondence.json',geography)]);
 
+    await json('north-entrance-art.json',{status:entranceStatus,pairs:matchedEntrance,walk:entranceWalk,photo});
     await json('high-park-terrain-review.json',terrainReport);
     await json('memory-gameplay.json',memoryGameplay);
     await json('movement-diagnostics.json',movementTrace);
@@ -370,7 +387,7 @@ async function main(){
 
     // Explicit allowlist. Nothing outside this staging directory can enter the archive.
     const files=['metadata.json','performance.json','console-errors.json','geographic-correspondence.json',
-      'report.html','high-park-terrain-review.json',...terrainFiles,'memory-gameplay.json',...movementFiles,...standaloneFiles,...geographicFiles,...captures.flatMap(capture=>capture.file?[capture.file]:[]),...comparisonFiles];
+      'report.html',...entranceFiles,'high-park-terrain-review.json',...terrainFiles,'memory-gameplay.json',...movementFiles,...standaloneFiles,...geographicFiles,...captures.flatMap(capture=>capture.file?[capture.file]:[]),...comparisonFiles];
     if((await run('zip',['-q','-X',archive,...files],{cwd:bundle})).code!==0)
       throw new Error('Falha ao criar o ZIP.');
     if((await run('unzip',['-tq',archive],{quiet:true})).code!==0)

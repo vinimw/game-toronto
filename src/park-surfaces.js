@@ -115,7 +115,7 @@ function appendShoulders(a,b,half,width,length,{positions,colors}){
   }
 }
 
-export function addPathBatches(scene,paths,style,pathWidth,texture,onGeometry,real=false,terrain){
+export function addPathBatches(scene,paths,style,pathWidth,texture,onGeometry,real=false,terrain,overlay){
   const batches=new Map(), shoulders=new Map(), featherPositions=[], featherColors=[];
   const evidence=onGeometry?new Map():null;
   const add=(points,width,height,color)=>{
@@ -159,6 +159,7 @@ export function addPathBatches(scene,paths,style,pathWidth,texture,onGeometry,re
     geometry.computeVertexNormals();worldUVs(geometry,false,real);
     const mesh=new THREE.Mesh(geometry,new THREE.MeshLambertMaterial({color,map:texture,side:THREE.DoubleSide}));
     scene.add(mesh);
+    overlay?.(geometry,color);
     for(const {feature,start,end} of evidence?.get(color)??[])onGeometry(feature,mesh,start,end);
   }
   if(!real)shoulders.set(style.verge,{positions:featherPositions,colors:featherColors});

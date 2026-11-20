@@ -1,4 +1,4 @@
-export const reviewPipelineVersion='3.5.0';
+export const reviewPipelineVersion='3.6.0';
 
 const mobile={
   viewport:{width:390,height:844},deviceScaleFactor:1,rendererPixelRatio:1,

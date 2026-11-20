@@ -1,3 +1,4 @@
+import {collectResources} from '../../src/scene-resources.js';
 import * as THREE from 'three';
 import {SceneManager} from '../../src/scene-manager.js';
 import {regionManifest} from '../../src/regions.js';
@@ -35,6 +36,8 @@ const manager=new SceneManager({manifest:regionManifest,loadRegion,avatar,buildS
 let camera, currentPoint, sceneLoadMs;
 function render(){
   const scene=manager.active.scene, fog=scene.fog;
+  renderer.shadowMap.enabled=Boolean(manager.active.stats.entranceArt);
+  renderer.shadowMap.type=THREE.PCFShadowMap;
   if(camera.isOrthographicCamera)scene.fog=null;
   try { renderer.render(scene,camera); }
   finally { scene.fog=fog; }
@@ -92,7 +95,7 @@ async function prepare(id){
     source:'Projeção inversa dos limites locais.',
   }:null;
   const sceneInfo={
-    sceneId:active.scene.name,origin,environment:active.stats.environment,dataset:world.dataset??null,
+    sceneId:active.scene.name,origin,entranceArt:active.stats.entranceArt??null,environment:active.stats.environment,dataset:world.dataset??null,
     boundsLocal:{format:'[minX,minZ,maxX,maxZ]',values:world.bbox},
     geographicBounds,
     geographicOrigin:world.origin??null,
@@ -163,7 +166,16 @@ async function measure(id){
   }
   const {calls,triangles}=renderer.info.render;
   const vegetation=manager.active.stats.vegetationMetrics?.();
+  const sceneResources=collectResources(manager.active.scene);
+  const approximateTexelBytes=[...sceneResources].reduce((sum,asset)=>{
+    if(!asset.isTexture)return sum;
+    const {width,height}=asset.image??{};
+    return sum+(width&&height?width*height*4*(asset.generateMipmaps?4/3:1):0);
+  },0);
+  const shadowBytes=manager.active.scene.children.filter(node=>node.isLight&&node.castShadow)
+    .reduce((sum,light)=>sum+light.shadow.mapSize.x*light.shadow.mapSize.y*8,0);
   return {...frameStatistics(intervals),drawCalls:calls,triangles,rendererMemory:{...renderer.info.memory},
+    estimatedTextureAndShadowBytes:Math.round(approximateTexelBytes+shadowBytes),
     ...(vegetation?{vegetation}:{}),
     sceneLoadMs,sceneLoadScope:'SceneManager.load: dados, construção e ativação; reutilizado nos pontos da mesma cena.'};
 }

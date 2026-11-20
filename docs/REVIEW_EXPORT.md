@@ -229,3 +229,10 @@ A entrega geográfica ampliada adiciona dez capturas do modo
 trenzinho é uma referência para a entrega futura. O ZIP inclui os
 arquivos-fonte OSM e HRDEM usados no relevo. As capturas e o benchmark
 do recorte norte continuam em seus perfis anteriores.
+
+O ZIP inclui `north-entrance-comparison.html` com foto licenciada e pares
+comparativos da entrada, das árvores e do viewport mobile. Consulte
+`north-entrance-art.json` para verificar o enquadramento e o percurso a 1×
+gravado em `north-entrance-walk.webm`. A estimativa de memória em
+`performance.json` se baseia nos recursos renderizados e nas dimensões das
+texturas e das sombras. A captura mobile usa emulação de navegador.

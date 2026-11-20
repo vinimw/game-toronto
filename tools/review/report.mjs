@@ -81,6 +81,7 @@ export async function writeReport(file,{metadata,performance,geography,issues,im
     ' · Chromium '+h(metadata.browser?.version)+'</p>'+details('Build e testes',metadata.checks)+
     details('Perfis e parâmetros por captura',{profiles:metadata.profiles, reproducibility:metadata.reproducibility,
       captures:metadata.captures})+
+    (metadata.entranceComparison?'<p><a href="north-entrance-comparison.html">Entrada norte · comparação com a foto e percurso</a></p>':'')+
     '<h2>Galeria</h2><div class="gallery">'+checkedImages.join('')+'</div>'+
     (missing.length?details('Capturas ausentes',missing):'')+'<h2>Desempenho estático</h2>'+table+
     details('Métricas por captura',performance.captures)+'<h2>Desempenho em movimento</h2>'+motionTable+

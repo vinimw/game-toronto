@@ -69,3 +69,19 @@ points.push(
   terrainView('44-expanded-pond-mobile','Prévia geográfica · Grenadier Pond mobile',[-173,1050],174225267,[1,5,-9],[-52,0,10],'mobile'),
   terrainView('45-expanded-north-mobile','Prévia geográfica · entrada norte mobile',[-22,-105],174188399,[0,3.8,-8],[0,1.5,11],'mobile'),
 );
+
+const entranceView=(id,label,local,eye,look,profile='desktop')=>terrainView(id,label,local,23661349,eye,look,profile);
+const gateFront=entranceView('47-north-entrance-after','Entrada norte · arco e pilares',[-15,-114],[-5,2.85,-24],[-1.7,3.0,-4.6]);
+points.push(
+  {...gateFront,id:'46-north-entrance-before',label:'Entrada norte · referência anterior',legacyEntrance:true},
+  gateFront,
+  entranceView('48-north-entrance-from-park','Entrada norte · vista de dentro do parque',[-15,-114],[0,2.85,17],[-2.0,3.2,-5.0]),
+  entranceView('49-north-pbr-detail','Entrada norte · cantaria, concreto e junta',[-29,-110],[1.4,1.42,1.9],[5.6,1.52,-6.7]),
+  entranceView('50-north-path-edge','Entrada norte · trilha e borda',[-20,-105],[-3.9,2.05,2],[-1.8,1.3,-8]),
+  entranceView('51-north-entrance-mobile','Entrada norte · composição mobile',[-15,-114],[-5,2.95,-31],[-1.7,3.0,-4.6],'mobile'),
+  entranceView('52-north-area-aerial','Entrada norte · visão aérea oblíqua',[-16,-115],[-5,37,-35],[-2,0,14]),
+  {...entranceView('54-north-tree-before','Entrada norte · árvores anteriores',[-23,-100],[-8,2.7,-16],[-12,7,1]),legacyEntrance:true},
+  entranceView('55-north-tree-after','Entrada norte · árvores novas',[-23,-100],[-8,2.7,-16],[-12,7,1]),
+);
+points.push({...points.find(point=>point.id==='51-north-entrance-mobile'),
+  id:'53-north-entrance-mobile-before',label:'Entrada norte · mobile anterior',legacyEntrance:true});

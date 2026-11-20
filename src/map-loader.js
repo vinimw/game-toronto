@@ -47,7 +47,9 @@ export async function loadWorld(){
     const world=prepareHighParkMap(await mapResponse.json());
     if(world.dataset!=='high-park-expanded')throw new Error('Recorte ampliado inválido.');
     const terrainData=await terrainResponse.json();
-    return {...world,terrain:createTerrain(terrainData,world.bbox,world.bboxWgs84),terrainData,
+    const legacy=new URLSearchParams(location.search).get('entrance')==='legacy';
+    const entranceAssets=legacy?null:await import('./environment-assets.js').then(module=>module.loadEntranceAssets());
+    return {...world,entranceAssets,terrain:createTerrain(terrainData,world.bbox,world.bboxWgs84),terrainData,
       label:'High Park ampliado · prévia geográfica'};
   }
   try {
