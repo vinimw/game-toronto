@@ -68,3 +68,16 @@ e enviar o commit.
 Referências
 - [Vite, publicação em Pages](https://vite.dev/guide/static-deploy.html#github-pages)
 - [GitHub, workflows para Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)
+
+## Falhas de acesso
+
+Se configure-pages apresentar Resource not accessible by integration,
+confira a permissão pages: read do job build e a ativação de Pages nas
+configurações do repositório. O job deploy precisa de pages: write e
+id-token: write.
+
+Em repositório privado, a disponibilidade depende do plano GitHub.
+A API recusou a ativação deste repositório no plano atual com HTTP 422
+e a mensagem “Your current plan does not support GitHub Pages for this repository.”
+A publicação depende de um plano compatível, da aprovação para tornar o
+repositório público ou de outra hospedagem.
