@@ -58,9 +58,17 @@ function realGroves(bounds,footpaths,zone,rand){
 
 function grassTuft(){
   const vertices=[];
-  for(const angle of [0,2.1,4.2]){
-    const x=Math.cos(angle),z=Math.sin(angle);
-    vertices.push(-x*.22,0,-z*.22,x*.22,0,z*.22,x*.37,1,z*.37);
+  for(let i=0;i<4;i++){
+    const angle=i*2.399,x=Math.cos(angle),z=Math.sin(angle);
+    const height=.53+i*.12;
+    let previous;
+    for(let j=0;j<=3;j++){
+      const t=j/3,reach=.09+.35*t*t,width=.15*(1-t)**.7;
+      const left=[x*reach-z*width,height*t,z*reach+x*width];
+      const right=[x*reach+z*width,height*t,z*reach-x*width];
+      if(previous)vertices.push(...previous[0],...left,...previous[1],...left,...right,...previous[1]);
+      previous=[left,right];
+    }
   }
   const geometry=new THREE.BufferGeometry();
   geometry.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));

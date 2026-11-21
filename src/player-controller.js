@@ -1,9 +1,8 @@
 import {movementDelta,movePlayer} from './movement.js';
 
-export const WALK_SPEED=5.1;
-export const RUN_SPEED=9;
-export const MAX_MULTIPLIER=5;
-export const SPEED_STEP=.5;
+import {WALK_SPEED,RUN_SPEED,MAX_MULTIPLIER,SPEED_STEP} from './player-speed-settings.js';
+
+export {WALK_SPEED,RUN_SPEED,MAX_MULTIPLIER,SPEED_STEP} from './player-speed-settings.js';
 
 // One controller for the persistent avatar, independent of region and saved progress.
 export class PlayerController {

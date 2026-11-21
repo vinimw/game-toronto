@@ -47,3 +47,17 @@ Os corredores passam a compartilhar os GLBs autorais de maple e oak
 do projeto. São três setores carregados por distância, com High e
 Balanced e vegetação base em Low. Os pontos de plantio são artísticos,
 filtrados contra caminhos, construções, água e áreas esportivas.
+
+## V2 · vermelho de primavera e exploração acelerada
+
+O Maple Leaf Garden enfatiza tulipas vermelhas, bordô e coral. É uma
+decisão de direção de arte para dar leitura à folha de longe. As fotos
+de 27/04/2026 mostram uma floração vermelha menos densa. O chão mantém
+a leitura do perímetro OSM quando as flores instanciadas são descarregadas.
+A cobertura do restante do parque usa folhas curvas autorais.
+
+O Trackless Train permanece estático. Os documentos de Toronto e do
+operador descrevem paradas e mostram a rota de forma ilustrada, sem a
+atribuição de segmentos OSM necessária para confirmar a animação.
+A v2 detalha lanternas, frisos e engates. No café, a referência fotográfica
+orienta a cor da fachada e os caixilhos. As proporções são estilizadas.

@@ -1,3 +1,4 @@
+import {RUN_SPEED,MAX_MULTIPLIER} from './player-speed-settings.js';
 import {nearSegment, pointInPolygon} from './geo.js';
 
 export const PLAYER_RADIUS = .35;
@@ -47,9 +48,9 @@ export function movePlayer(position, delta, canWalk, dt) {
   if (!finitePoint(position)) throw new RangeError('Invalid player position');
   if (!finitePoint(delta) || !Number.isFinite(dt) || dt <= 0) return {position: [...position], speed: 0, heading: null};
   const distance = Math.hypot(...delta);
-  // Maximum supported running speed: 9 units/s × 5, at a capped 50 ms step.
-  // Substep size stays radius/2 regardless of speed (at most 13 steps).
-  if (!Number.isFinite(distance) || distance > 2.25 + 1e-9) return {position: [...position], speed: 0, heading: null};
+  // Bound the work per frame while keeping collision probes half a radius apart.
+  const maximumDisplacement=RUN_SPEED*MAX_MULTIPLIER*Math.min(dt,.05);
+  if (!Number.isFinite(distance) || distance > maximumDisplacement + 1e-9) return {position: [...position], speed: 0, heading: null};
   let [x, z] = position;
   const steps = Math.max(1, Math.ceil(distance / (PLAYER_RADIUS / 2)));
   for (let i = 0; i < steps; i++) {

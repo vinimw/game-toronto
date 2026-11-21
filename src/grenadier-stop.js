@@ -37,7 +37,7 @@ export function buildGrenadierStop(world,quality){
   const root=new THREE.Group();
   root.name='high-park:grenadier-stop';
   const m=palette({red:0xa4292b,cream:0xeee4ce,dark:0x29282b,brass:0xc49b54,
-    roof:0x45514e,trim:0xe7dcc4,glass:0x344749,wood:0x75634d});
+    roof:0x45514e,trim:0xe7dcc4,glass:0x344749,wood:0x75634d,light:0xffdc91});
   const train=new THREE.Group();train.rotation.y=yaw;
   train.position.set(stop[0],world.terrain.at(...stop),stop[1]);root.add(train);
   const detail=quality==='high',sides=detail?14:quality==='low'?7:10;
@@ -47,6 +47,8 @@ export function buildGrenadierStop(world,quality){
     car.position.y=world.terrain.at(stop[0]+axis.x,stop[1]+axis.z)-train.position.y;
     train.add(car);
     box(car,m.red,[1.92,.29,3.82],[0,.62,0]);
+    box(car,m.dark,[.17,.13,.56],[0,.55,-2.05]);
+    for(const x of [-.96,.96])box(car,m.cream,[.028,.065,3.5],[x,.71,0]);
     for(const x of [-.88,.88])for(const z of [-1.22,1.19]){
       cylinder(car,m.dark,.4,.22,[x,.43,z],[0,0,Math.PI/2],sides);
       cylinder(car,m.brass,.20,.235,[x,.43,z],[0,0,Math.PI/2],sides);
@@ -54,6 +56,9 @@ export function buildGrenadierStop(world,quality){
     if(offset===0){
       cylinder(car,m.red,.59,2.05,[0,1.42,.63],[Math.PI/2,0,0],sides);
       cylinder(car,m.dark,.5,.07,[0,1.42,1.69],[Math.PI/2,0,0],sides);
+      cylinder(car,m.brass,.23,.16,[0,1.93,1.63],[Math.PI/2,0,0],sides);
+      cylinder(car,m.light,.165,.023,[0,1.93,1.72],[Math.PI/2,0,0],sides);
+      box(car,m.dark,[1.78,.22,.16],[0,.47,1.91]);
       cylinder(car,m.dark,.15,.73,[0,2.07,1.07],[0,0,0],sides);
       cylinder(car,m.brass,.17,.09,[0,2.49,1.07],[0,0,0],sides);
       box(car,m.red,[1.68,.62,1.25],[0,1.03,-1.18]);
@@ -63,6 +68,7 @@ export function buildGrenadierStop(world,quality){
       box(car,m.cream,[2.05,.13,3.98],[0,2.39,0]);
       for(const x of [-.87,.87]){
         box(car,m.red,[.07,.42,3.7],[x,.95,0]);
+        box(car,m.cream,[.085,.06,3.77],[x,1.17,0]);
         for(const z of [-1.73,0,1.73])box(car,m.cream,[.06,1.42,.06],[x,1.63,z]);
       }
       for(const z of [-1.22,-.41,.41,1.22]){
@@ -94,8 +100,11 @@ export function buildGrenadierStop(world,quality){
       const angle=-Math.atan2(b[1]-a[1],b[0]-a[0]);
       for(const t of [.22,.5,.78]){
         const x=THREE.MathUtils.lerp(a[0],b[0],t),z=THREE.MathUtils.lerp(a[1],b[1],t);
-        const window=box(root,m.trim,[2.34,1.65,.19],[x,floor+2.05,z+.07]);window.rotation.y=angle;
-        const glass=box(root,m.glass,[2.13,1.43,.07],[x,floor+2.05,z+.17]);glass.rotation.y=angle;
+        const door=t===.5;
+        const dim=door?[1.95,2.35]:[2.34,1.65],y=floor+(door?1.36:2.05);
+        const window=box(root,m.trim,[...dim,.19],[x,y,z+.07]);window.rotation.y=angle;
+        const glass=box(root,m.glass,[dim[0]-.22,dim[1]-.23,.07],[x,y,z+.17]);glass.rotation.y=angle;
+        const mullion=box(root,m.trim,[.067,dim[1]-.10,.07],[x,y,z+.21]);mullion.rotation.y=angle;
       }
     }
   }

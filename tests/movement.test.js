@@ -59,7 +59,7 @@ test('forward heading faces negative z and idle does not rotate',()=>{
   assert.equal(movePlayer([-2,-2],[0,0],walk,.05).heading,null);
 });
 test('invalid displacement is rejected and invalid starting position fails explicitly',()=>{
-  for(const delta of [[NaN,0],[Infinity,0],[3,0]]) assert.deepEqual(movePlayer([-2,-2],delta,walk,.05).position,[-2,-2]);
+  for(const delta of [[NaN,0],[Infinity,0],[7,0]]) assert.deepEqual(movePlayer([-2,-2],delta,walk,.05).position,[-2,-2]);
   assert.throws(()=>movePlayer([NaN,0],[0,0],walk,.05),RangeError);
 });
 test('camera sweep stops before a building and respects height',()=>{

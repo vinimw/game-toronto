@@ -1,4 +1,5 @@
-import {trainFootprints} from './grenadier-stop.js';
+import {mapleWay,mapleGardenBase} from './maple-garden.js';
+import {cafeWay,trainFootprints} from './grenadier-stop.js';
 import {tennisBlocks} from './park-sports.js';
 import {pondId,pondWater} from './grenadier-pond.js';
 import {hillSurface,cherrySky} from './cherry-hill-surfaces.js';
@@ -29,7 +30,7 @@ function makeBuilding(f,index){
   if(points.length<3)return null;
   const s=new THREE.Shape();points.forEach(([x,z],i)=>i?s.lineTo(x,-z):s.moveTo(x,-z));s.closePath();
   const h=buildingHeight(f.tags);
-  const color=new THREE.Color().setHSL(.07+rand()*.08,.13+rand()*.13,.65+rand()*.13);
+  const color=f.osmId===cafeWay?new THREE.Color(0x789292):new THREE.Color().setHSL(.07+rand()*.08,.13+rand()*.13,.65+rand()*.13);
   const mesh=new THREE.Mesh(new THREE.ExtrudeGeometry(s,{depth:h,bevelEnabled:false,curveSegments:1,steps:1}),new THREE.MeshLambertMaterial({color}));
   mesh.rotation.x=-Math.PI/2;mesh.receiveShadow=true;mesh.castShadow=false;
   const roof=flat(points,h+.04,rand()>.5?0x958575:0x8b8580); const group=new THREE.Group();group.add(mesh,roof);return group;
@@ -56,7 +57,10 @@ export function buildWorld(scene,world,portals=[],evidence){
   const greens=world.features.filter(f=>f.kind==='green'),paths=world.features.filter(f=>f.kind==='path'||f.kind==='rail');
   const buildings=world.features.filter(f=>f.kind==='building'),waters=world.features.filter(f=>f.kind==='water');
   if(terrain)addTerrainChunks(scene,terrain,[...world.features.filter(f=>f.kind==='sport'),...greens],style,texture);
-  else for(const feature of greens){
+  if(terrain){
+    const garden=greens.find(feature=>feature.osmId===mapleWay);
+    if(garden)scene.add(mapleGardenBase(world,garden));
+  }else for(const feature of greens){
     const wooded=feature.tags?.landuse==='forest'||(real&&feature.tags?.natural==='wood');
     const height=real&&feature.tags?.landuse==='grass'?-.021:real&&wooded?-.023:-.025;
     const mesh=flat(feature.points,height,wooded?style.woodland:style.meadow);
