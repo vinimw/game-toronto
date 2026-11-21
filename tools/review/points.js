@@ -146,12 +146,12 @@ for(const [n,label,local,eye,look,way,profile] of mapleSpringViews)
   points.push({...terrainView(n+'-maple-spring','Maple Leaf Garden · '+label,local,way,eye,look,profile),maple:true});
 
 for(const [id,label,local,way,eye,look,profile] of [
-  ['87-tennis-player','Tênis · rede na altura do jogador',[61,188],1116261446,[0,1.65,0],[13,1,2]],
-  ['88-tennis-mobile','Tênis · quadras em Balanced',[61,188],1116261446,[0,1.65,0],[13,1,2],'mobile'],
-  ['89-trackless-train','Trackless Train · parada junto ao café',[-87,799],1389554894,[0,1.65,0],[2,1,-6]],
-  ['90-grenadier-cafe','Grenadier Café · fachada de West Road',[-82,784],125699284,[0,1.65,0],[0,2,-18]],
+  ['87-tennis-player','Tênis · rede na altura do jogador',[61,188],1116261446,[-3,2.1,-2],[13,1,2]],
+  ['88-tennis-mobile','Tênis · quadras em Balanced',[61,188],1116261446,[-3,2.1,-2],[13,1,2],'mobile'],
+  ['89-trackless-train','Trackless Train · parada junto ao café',[-87,799],1389554894,[-4,2.1,4],[2,1,-6]],
+  ['90-grenadier-cafe','Grenadier Café · fachada de West Road',[-82,784],125699284,[-3,2.15,3],[0,2,-18]],
   ['91-grenadier-cafe-aerial','Grenadier Café · aérea 3D',[-82,784],125699284,[49,47,22],[-4,0,-18]],
-  ['92-grenadier-cafe-mobile','Grenadier Café · vista mobile',[-82,784],125699284,[0,1.65,0],[0,2,-18],'mobile'],
+  ['92-grenadier-cafe-mobile','Grenadier Café · vista mobile',[-82,784],125699284,[-3,2.15,3],[0,2,-18],'mobile'],
 ]){
   points.push(terrainView(id,label,local,way,eye,look,profile));
 }

@@ -75,7 +75,7 @@ export function highParkStreaming(scene,world,sun,style,paths,activateEntrance,b
       }catch(error){batch.dispose();disposeScene(group);throw error;}
     },
   }));
-  let assetStats=()=>null,entranceArt=null,gateLease,fallback,gateBounds,renderer,disposed=false;
+  let assetStats=()=>null,entranceExclusiveAssetStats=()=>null,entranceArt=null,gateLease,fallback,gateBounds,renderer,disposed=false;
   if(world.entranceEnabled){
     manifests.push({
       id:'high-park:north-entrance',bounds:entranceArtBounds,loadRadius:128,keepRadius:198,lane:'assets',bias:-180,
@@ -83,6 +83,7 @@ export function highParkStreaming(scene,world,sun,style,paths,activateEntrance,b
       async load(signal,frame){
         const module=await import('./environment-assets.js');
         assetStats=module.entranceAssetStats;
+        entranceExclusiveAssetStats=module.entranceExclusiveAssetStats;
         signal.throwIfAborted();
         if(!gateLease){
           gateLease=module.acquireEntranceGate();
@@ -375,7 +376,7 @@ export function highParkStreaming(scene,world,sun,style,paths,activateEntrance,b
           cache:'procedural; no external assets'},
         firstSakura:{id:seasonalGrove?.id??null,lod:seasonalLayers.has(quality)?quality:seasonalLayers.has('low')?'low':null,
           detailCoverage:seasonalBlend,lowCoverage:seasonalLowCoverage,trees:getSeasonalTreePlacements().length},
-        landmarkState:entranceArt?'detailed':fallback?'structure':'pending',sectors,assets:assetStats(),
+        landmarkState:entranceArt?'detailed':fallback?'structure':'pending',sectors,assets:assetStats(),entranceExclusiveAssets:entranceExclusiveAssetStats(),
         firstPresentationCount:sectors.reduce((total,s)=>total+s.firstPresentationCount,0),
         lateActivationCount:sectors.reduce((total,s)=>total+s.lateActivationCount,0),
         visiblePopInCount:sectors.reduce((total,s)=>total+s.visiblePopInCount,0),

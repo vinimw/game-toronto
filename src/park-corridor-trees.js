@@ -3,6 +3,7 @@ import {nearSegment,pointInPolygon} from './geo.js';
 import {collectResources,disposeScene} from './scene-resources.js';
 
 const variants=['maple-43','oak-31'];
+export const corridorModelKeys=variants.flatMap(name=>['high','balanced'].map(lod=>name+'-'+lod+'.glb'));
 export const corridors=[
   {id:'north-corridor',bounds:[-95,-78,24,130],trees:[[-47,-48],[-65,-15],[-33,57],[-82,90]]},
   {id:'west-road-corridor',bounds:[-210,475,-63,690],trees:[[-150,500],[-165,535],[-116,590],[-189,642]]},
