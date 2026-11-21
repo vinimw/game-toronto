@@ -306,7 +306,7 @@ async function expandedTerrain(){
       max:[Math.max(...x),placement.floor+(overlay?6.25:height),Math.max(...z)]};
     const delta=actual?{min:actual.min.toArray().map((value,i)=>value-estimated.min[i]),
       max:actual.max.toArray().map((value,i)=>value-estimated.max[i])}:null;
-    const doors=(exterior?.userData.entrances??entrances??[]).map(({threshold,approach})=>{
+    const doors=(exterior?.userData.entrances??entrances??[]).map(({threshold,approach,...access})=>{
       const absoluteY=threshold[1]+(exterior?0:placement.floor);
       const samples=Array.from({length:21},(_,i)=>{
         const t=i/20,x=THREE.MathUtils.lerp(approach[0],threshold[0],t),z=THREE.MathUtils.lerp(approach[2],threshold[2],t);
@@ -315,7 +315,8 @@ async function expandedTerrain(){
       const last=samples.findIndex(sample=>!sample.walkable);
       const closest=samples[last===-1?20:Math.max(0,last-1)];
       const rise=absoluteY-closest.grade;
-      return {threshold:[threshold[0],absoluteY,threshold[2]],samples,rise,
+      return {...access,threshold:[threshold[0],absoluteY,threshold[2]],samples,rise,
+        approachFree:samples[0].walkable,thresholdHeightWithinTolerance:Math.abs(rise)<=.25,
         status:!samples[0].walkable||Math.abs(rise)>.25?'entrance-inaccessible':'approach-clear'};
     });
     const categories=[buried>.025?'buried':floating>.025?'floating':relief>excessiveFoundationThreshold?'excessive-foundation':placement.foundation?'foundation':'grounded'];

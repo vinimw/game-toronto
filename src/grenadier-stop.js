@@ -101,15 +101,16 @@ export function buildGrenadierStop(world,quality){
     const geo=new THREE.BufferGeometry();
     geo.setAttribute('position',new THREE.Float32BufferAttribute(roof,3));geo.computeVertexNormals();
     m.roof.side=THREE.DoubleSide;exterior.add(new THREE.Mesh(geo,m.roof));
-    for(const [a,b] of [[ring[0],ring[1]],[ring[3],ring[5]]]){
+    for(const [facade,[a,b]] of [[ring[0],ring[1]],[ring[3],ring[5]]].entries()){
       const angle=-Math.atan2(b[1]-a[1],b[0]-a[0]);
       for(const t of [.22,.5,.78]){
         const x=THREE.MathUtils.lerp(a[0],b[0],t),z=THREE.MathUtils.lerp(a[1],b[1],t);
-        const door=t===.5;
+        // The western panel was an invented entrance on a plain footprint.
+        const door=facade===1&&t===.5;
         const dim=door?[1.95,2.35]:[2.34,1.65],y=floor+(door?1.36:2.05);
         if(door){
           const sign=Math.sign((x-center[0])*(-Math.sin(angle))+(z-center[1])*Math.cos(angle));
-          exterior.userData.entrances.push({threshold:[x,y-dim[1]/2,z+.07],
+          exterior.userData.entrances.push({id:'south-exterior',role:'exterior-only',source:'stylized',transitable:false,threshold:[x,y-dim[1]/2,z+.07],
             approach:[x-Math.sin(angle)*sign*2,0,z+Math.cos(angle)*sign*2]});
         }
         const window=box(exterior,m.trim,[...dim,.19],[x,y,z+.07]);window.rotation.y=angle;
