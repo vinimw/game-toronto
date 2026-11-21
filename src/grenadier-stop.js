@@ -34,7 +34,9 @@ export function trainFootprints(world){
   return result;
 }
 
-export function buildGrenadierStop(world,quality){
+export const cafeApronMaps=['concrete_pavement-Diffuse.jpg','concrete_pavement-nor_gl.jpg','concrete_pavement-arm.jpg'];
+
+export function buildGrenadierStop(world,quality,apronMaps=[]){
   const root=new THREE.Group();
   root.name='high-park:grenadier-stop';
   const m=palette({red:0xa4292b,cream:0xeee4ce,dark:0x29282b,brass:0xc49b54,
@@ -118,6 +120,33 @@ export function buildGrenadierStop(world,quality){
         const mullion=box(exterior,m.trim,[.067,dim[1]-.10,.07],[x,y,z+.21]);mullion.rotation.y=angle;
       }
     }
+    const [entrance]=exterior.userData.entrances;
+    if(entrance)addCafeApron(root,world.terrain,entrance,apronMaps);
   }
   return root;
+}
+
+function addCafeApron(root,terrain,{threshold,approach},[map,normalMap,arm]){
+  const [x,,z]=threshold;
+  const dx=(approach[0]-x)/2,dz=(approach[2]-z)/2;
+  const positions=[],uv=[];
+  for(let row=0;row<9;row++)for(let col=0;col<8;col++){
+    for(const [u,v] of [[0,0],[1,0],[1,1],[0,0],[1,1],[0,1]]){
+      const along=.16+(row+v)*.47,cross=(col+u-4)*.32;
+      const width=along<2.6?1:1-(along-2.6)*.30;
+      const px=x+dx*along-dz*cross*width,pz=z+dz*along+dx*cross*width;
+      positions.push(px,terrain.at(px,pz)+.027,pz);
+      uv.push(cross*.7,along*.7);
+    }
+  }
+  const geometry=new THREE.BufferGeometry();
+  geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+  geometry.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
+  geometry.computeVertexNormals();
+  const apron=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({
+    color:map?0xc5baa6:0x9a9180,map:map??null,normalMap:normalMap??null,roughnessMap:arm??null,
+    aoMap:arm??null,roughness:.91,side:THREE.DoubleSide,
+  }));
+  apron.name='grenadier-cafe-apron';
+  root.add(apron);
 }

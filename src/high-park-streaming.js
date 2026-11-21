@@ -1,5 +1,5 @@
 import {corridors,corridorModelKeys,loadCorridor} from './park-corridor-trees.js';
-import {buildGrenadierStop,stopBounds} from './grenadier-stop.js';
+import {buildGrenadierStop,cafeApronMaps,stopBounds} from './grenadier-stop.js';
 import {buildNorthernSports} from './park-sports.js';
 import {assetUrl} from './asset-url.js';
 import * as THREE from 'three';
@@ -289,12 +289,22 @@ export function highParkStreaming(scene,world,sun,style,paths,activateEntrance,b
   });
   if(world.dataset==='high-park-expanded')manifests.push({
     id:'high-park:grenadier-stop',bounds:stopBounds,loadRadius:125,keepRadius:215,lane:'stop',
-    lods:['high','balanced','low'],assets:{source:'OSM café footprint; static train at documented stop area',shared:[]},
+    lods:['high','balanced','low'],assets:{source:'OSM café footprint; stylized apron and train stop',shared:cafeApronMaps},
     async load(signal,frame){
       await frame();signal.throwIfAborted();
-      const group=buildGrenadierStop(world,quality);
-      return {mount(){scene.add(group);},estimatedGeometryBytes:estimatedGeometry(group),
-        dispose(){group.removeFromParent();disposeScene(group);}};
+      const {acquireEnvironmentAsset}=await import('./environment-assets.js');
+      signal.throwIfAborted();
+      const leases=cafeApronMaps.slice(0,quality==='high'?3:quality==='low'?0:1).map(acquireEnvironmentAsset);
+      const release=()=>leases.forEach(lease=>lease.release());
+      signal.addEventListener('abort',release,{once:true});
+      try{
+        const maps=await Promise.all(leases.map(lease=>lease.ready));
+        signal.throwIfAborted();
+        const group=buildGrenadierStop(world,quality,maps);
+        return {mount(){scene.add(group);},estimatedGeometryBytes:estimatedGeometry(group),
+          dispose(){group.removeFromParent();disposeScene(group,new Set(maps));release();}};
+      }catch(error){release();throw error;}
+      finally{signal.removeEventListener('abort',release);}
     },
   });
   if(world.dataset==='high-park-expanded')for(const corridor of corridors)manifests.push({
