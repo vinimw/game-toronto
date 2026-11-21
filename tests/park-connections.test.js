@@ -22,3 +22,14 @@ test('rejects an OSM segment when the collision probe finds an obstruction',()=>
   assert.equal(result.reason,'disconnected');
   assert.equal(result.blocked[0].osmId,9);
 });
+
+test('checks an exterior landmark approach without attributing it to OSM',()=>{
+  const map=world([path(9,[[0,0],[4,0]])]);
+  const exterior=[[4,1],[5,1]];
+  const result=planParkConnection(map,[[0,0],[4,0]],()=>true,exterior);
+  assert.equal(result.status,'planned');
+  assert.deepEqual(result.segments.map(s=>s.osmId),[9,null,null]);
+  assert.deepEqual(result.segments.at(-1).to,[5,1]);
+  assert.equal(planParkConnection(map,[[0,0],[4,0]],(_,z)=>z<.6,exterior).reason,
+    'exterior-approach-obstructed');
+});

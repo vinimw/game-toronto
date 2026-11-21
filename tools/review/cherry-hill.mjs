@@ -72,8 +72,13 @@ export async function evaluateCherryHill(browser,target,bundle,safeMessage,{pond
     const legs=[];
     async function walk(label,yaw,destination,multiplier){
       const [x,,z]=await position();
-      if(cafe)await page.evaluate(heading=>window.aimExplorationReview(heading),yaw);
-      else await stage([x,z],yaw);
+      if(cafe){
+        await page.evaluate(heading=>window.aimExplorationReview(heading),yaw);
+        await page.waitForFunction(heading=>{
+          const yaw=JSON.parse(document.querySelector('#game canvas').dataset.reviewPose).orbit.yaw;
+          return Math.abs(Math.atan2(Math.sin(yaw-heading),Math.cos(yaw-heading)))<.02;
+        },yaw,{timeout:3000});
+      }else await stage([x,z],yaw);
       await page.locator('#speed-panel input').evaluate((slider,value)=>{
         slider.value=String(value);slider.dispatchEvent(new Event('input',{bubbles:true}));
       },multiplier);

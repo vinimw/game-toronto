@@ -1,4 +1,4 @@
-import {corridors,loadCorridor} from './park-corridor-trees.js';
+import {corridors,corridorModelKeys,loadCorridor} from './park-corridor-trees.js';
 import {buildGrenadierStop,stopBounds} from './grenadier-stop.js';
 import {buildNorthernSports} from './park-sports.js';
 import {assetUrl} from './asset-url.js';
@@ -299,7 +299,7 @@ export function highParkStreaming(scene,world,sun,style,paths,activateEntrance,b
   });
   if(world.dataset==='high-park-expanded')for(const corridor of corridors)manifests.push({
     id:'high-park:'+corridor.id,bounds:corridor.bounds,loadRadius:92,keepRadius:167,lane:'corridor',
-    lods:['high','balanced'],hasDetail:()=>quality!=='low',assets:{source:'Shared authored maple and oak GLBs',shared:[]},
+    lods:['high','balanced'],hasDetail:()=>quality!=='low',assets:{source:'Shared authored maple and oak GLBs',shared:corridorModelKeys},
     async load(signal,frame){
       await frame();signal.throwIfAborted();
       const art=await loadCorridor(world,corridor,quality,signal);

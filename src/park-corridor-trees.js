@@ -39,24 +39,23 @@ export async function loadCorridor(world,corridor,quality,signal){
   try{
     const models=await Promise.all(leases.map(lease=>lease?.ready));
     signal.throwIfAborted();
-    const pose=new THREE.Object3D();
+    const pose=new THREE.Object3D(),instanceMatrix=new THREE.Matrix4();
     for(const [variant,model] of models.entries()){
       const selection=selections[variant];
       if(!selection.length)continue;
       for(const asset of collectResources(model))shared.add(asset);
       model.traverse(part=>{
         if(!part.isMesh)return;
-        const geometry=part.geometry.clone().applyMatrix4(part.matrixWorld);
-        const material=part.material.clone();
+        const material=part.material.name.startsWith('LeafCards')?part.material.clone():part.material;
         if(material.name.startsWith('LeafCards')){
           material.alphaTest=.44;material.transparent=false;material.side=THREE.DoubleSide;
         }
-        const batch=new THREE.InstancedMesh(geometry,material,selection.length);
+        const batch=new THREE.InstancedMesh(part.geometry,material,selection.length);
         selection.forEach(([x,z],i)=>{
           const random=seeded(Math.abs(Math.round(x*167+z*29)));
           pose.position.set(x,world.terrain.at(x,z),z);pose.rotation.y=enhanced?random()*Math.PI*2:i*2.39+variant;
           const size=enhanced?.76+random()*.34:.72+i*.11;
-          pose.scale.set(size,enhanced?size*(.91+random()*.21):size,size);pose.updateMatrix();batch.setMatrixAt(i,pose.matrix);
+          pose.scale.set(size,enhanced?size*(.91+random()*.21):size,size);pose.updateMatrix();batch.setMatrixAt(i,instanceMatrix.multiplyMatrices(pose.matrix,part.matrixWorld));
         });
         root.add(batch);
       });

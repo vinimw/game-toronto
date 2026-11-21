@@ -3,11 +3,12 @@ import {createWalkTest} from './movement.js';
 const distance=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]);
 export const explorationConnections=[
   {id:'north-sports',anchors:[[-19,-108],[28.69,184.12]]},
-  {id:'west-cherry-cafe',anchors:[[-164,530],[-201,774],[-125,777]]},
+  {id:'west-cherry-cafe',anchors:[[-164,530],[-201,774],[-125,777]],
+    exterior:[[-115.15,782.85],[-105.49,787.26],[-96,790.63],[-74.5,779],[-74.25,776.5]]},
   {id:'pond-hillside-garden',anchors:[[-270,851],[-198,926],[-127,1026]]},
 ];
 
-export function planParkConnection(world,anchors,canWalk=createWalkTest(world.features,world.bbox)){
+export function planParkConnection(world,anchors,canWalk=createWalkTest(world.features,world.bbox),exterior=[]){
   const vertices=new Map(),blocked=[];
   function node(point){
     const key=point.join(',');
@@ -70,6 +71,17 @@ export function planParkConnection(world,anchors,canWalk=createWalkTest(world.fe
     const leg=shortest(stops[i-1].match,stops[i].match);
     if(!leg)return {status:'unavailable',reason:'disconnected',leg:i,snapped,blocked};
     segments.push(...leg);
+  }
+  for(const to of exterior){
+    const from=segments.at(-1)?.to??stops.at(-1).match.point,length=distance(from,to);
+    if(length<=.001)continue;
+    const steps=Math.ceil(length/.25);
+    for(let step=0;step<=steps;step++){
+      const t=step/steps;
+      if(!canWalk(from[0]+(to[0]-from[0])*t,from[1]+(to[1]-from[1])*t,.4))
+        return {status:'unavailable',reason:'exterior-approach-obstructed',from,to};
+    }
+    segments.push({from,to,length,osmId:null,source:'review-exterior-approach'});
   }
   return {status:'planned',snapped,segments,distanceMeters:segments.reduce((n,s)=>n+s.length,0)};
 }

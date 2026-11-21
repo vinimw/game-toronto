@@ -291,7 +291,7 @@ if(reviewCapture){
   window.planExplorationReview=id=>{
     const connection=explorationConnections.find(route=>route.id===id);
     if(!connection||world?.dataset!=='high-park-expanded')throw new Error('Percurso de revisão inválido.');
-    return planParkConnection(world,connection.anchors,stats.canWalk);
+    return planParkConnection(world,connection.anchors,stats.canWalk,connection.exterior);
   };
   window.aimExplorationReview=yaw=>{
     if(!Number.isFinite(yaw))throw new Error('Yaw de revisão inválido.');
