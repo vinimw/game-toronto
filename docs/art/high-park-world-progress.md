@@ -25,3 +25,25 @@ publica o serviço e um mapa de rota ilustrado. A sequência de segmentos
 OSM, os pontos exatos de parada e o modelo do veículo ficam pendentes.
 Grenadier Café, High Park Zoo e Jamie Bell permanecem na base geográfica.
 OSM usa ODbL. Não foram incorporadas imagens ou malhas de terceiros.
+
+## Continuação
+
+O setor esportivo incorpora redes e postes nas três quadras públicas.
+Os eixos das redes vêm dos retângulos OSM; altura e materiais são
+aproximações. A colisão coincide com a rede. A configuração dos
+cercamentos e portões permanece pendente de levantamento.
+
+O Grenadier Café mantém a base OSM 125699284 e ganha telhado de quatro
+águas e caixilhos pela referência [Alaney2k, 5/10/2008, CC BY 3.0](https://commons.wikimedia.org/wiki/File:High_Park_Grenadier_Cafe.jpg).
+A fachada exterior continua estilizada e não há interior novo.
+O [mapa municipal](https://www.toronto.ca/legdocs/mmis/2026/gg/bgrd/backgroundfile-284637.pdf)
+registra a parada 5 na área do restaurante. O modelo estático na
+via OSM 1389554894 aproxima a posição de estacionamento na área da parada.
+A posição exata e a associação de toda a rota às vias permanecem
+indeterminadas. O desenho vermelho e creme segue a [referência municipal de transporte](https://www.toronto.ca/wp-content/uploads/2023/03/9563-high-park-movement-strategy-open-house-presentation-preferred-strategy-part-a-april-3-2023.pdf).
+As malhas são autorais e as fotografias não foram incorporadas.
+
+Os corredores passam a compartilhar os GLBs autorais de maple e oak
+do projeto. São três setores carregados por distância, com High e
+Balanced e vegetação base em Low. Os pontos de plantio são artísticos,
+filtrados contra caminhos, construções, água e áreas esportivas.

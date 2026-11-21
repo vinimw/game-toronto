@@ -359,6 +359,9 @@ async function main(){
     const maple=await evaluateCherryHill(browser,started.target,bundle,safeMessage,{maple:true});
     checks.mapleGarden={status:maple.status,report:'maple-garden.json'};
     if(maple.status!=='passed')issues.push({type:'maple-garden-failed',message:maple.error??'Percurso ou streaming incompleto.'});
+    const cafe=await evaluateCherryHill(browser,started.target,bundle,safeMessage,{cafe:true});
+    checks.grenadierCafe={status:cafe.status,report:'grenadier-cafe.json'};
+    if(cafe.status!=='passed')issues.push({type:'grenadier-cafe-failed',message:cafe.error??'Percurso local incompleto.'});
     const movementTrace=await evaluateMovement(browser,started.target,bundle,cameraEvaluation,Number(videoFps));
     checks.movement={status:movementTrace.status,report:'movement-diagnostics.json'};
     if(movementTrace.status!=='passed')issues.push({type:'movement-diagnostics-failed',
@@ -393,8 +396,9 @@ async function main(){
       reproducibility:{animationTimeSeconds:0,lighting:'Iluminação fixa da cena, sem relógio de dia.',
         proceduralSeedPolicy:'Sementes fixas definidas no gerador versionado pelo commit Git.'},
       viewport,resolution:viewport,captures,geographicEvidence:geographicFiles,entranceComparison:'north-entrance-comparison.html',
-      video:pond.video?{status:pond.status==='passed'?'validated':'failed',files:[pond.video,...(maple.video?[maple.video]:[]),...videos],
+      video:pond.video?{status:pond.status==='passed'?'validated':'failed',files:[pond.video,...(cafe.video?[cafe.video]:[]),...(maple.video?[maple.video]:[]),...videos],
         artifacts:[{file:pond.video,status:pond.status,encodingFps:pond.playback?.fps,diagnostic:'grenadier-pond.json'},
+          ...(cafe.video?[{file:cafe.video,status:cafe.status,encodingFps:cafe.playback?.fps,diagnostic:'grenadier-cafe.json'}]:[]),
           ...(maple.video?[{file:maple.video,status:maple.status,encodingFps:maple.playback?.fps,diagnostic:'maple-garden.json'}]:[]),
           ...(cherry.video?[{file:cherry.video,status:cherry.status,encodingFps:cherry.playback?.fps,diagnostic:'cherry-hill.json'}]:[]),
           ...streaming.videos.map(file=>({file,status:streaming.status,diagnostic:'world-streaming.json'})),
@@ -412,6 +416,7 @@ async function main(){
     await json('cherry-hill.json',cherry);
     await json('grenadier-pond.json',pond);
     await json('maple-garden.json',maple);
+    await json('grenadier-cafe.json',cafe);
     await json('memory-gameplay.json',memoryGameplay);
     await json('movement-diagnostics.json',movementTrace);
     await json('automatic-camera-diagnostics.json',automaticCamera);
@@ -429,7 +434,7 @@ async function main(){
 
     // Explicit allowlist. Nothing outside this staging directory can enter the archive.
     const files=['metadata.json','performance.json','console-errors.json','geographic-correspondence.json',
-      'report.html','maple-garden.json',...(maple.video?[maple.video]:[]),'grenadier-pond.json',...(pond.video?[pond.video]:[]),'cherry-hill.json',...(cherry.video?[cherry.video]:[]),'world-streaming.json',...streaming.videos,...entranceFiles,'high-park-terrain-review.json',...terrainFiles,'memory-gameplay.json',...movementFiles,...standaloneFiles,...geographicFiles,...captures.flatMap(capture=>capture.file?[capture.file]:[]),...comparisonFiles];
+      'report.html','grenadier-cafe.json',...(cafe.video?[cafe.video]:[]),'maple-garden.json',...(maple.video?[maple.video]:[]),'grenadier-pond.json',...(pond.video?[pond.video]:[]),'cherry-hill.json',...(cherry.video?[cherry.video]:[]),'world-streaming.json',...streaming.videos,...entranceFiles,'high-park-terrain-review.json',...terrainFiles,'memory-gameplay.json',...movementFiles,...standaloneFiles,...geographicFiles,...captures.flatMap(capture=>capture.file?[capture.file]:[]),...comparisonFiles];
     if((await run('zip',['-q','-X',archive,...files],{cwd:bundle})).code!==0)
       throw new Error('Falha ao criar o ZIP.');
     if((await run('unzip',['-tq',archive],{quiet:true})).code!==0)

@@ -1,3 +1,5 @@
+import {trainFootprints} from './grenadier-stop.js';
+import {tennisBlocks} from './park-sports.js';
 import {pondId,pondWater} from './grenadier-pond.js';
 import {hillSurface,cherrySky} from './cherry-hill-surfaces.js';
 import {cherryHill} from './cherry-hill-manifest.js';
@@ -136,6 +138,7 @@ export function buildWorld(scene,world,portals=[],evidence){
   });
   buildingBatches?.attach();
   if(world.entranceEnabled)furniture.push(...entranceGateBlocks(world));
+  if(terrain)furniture.push(...tennisBlocks(world),...trainFootprints(world));
   cameraObstacles.push(...furniture);
   const collisionFeatures=furniture.length?[...world.features,...furniture]:world.features;
   const canWalk=createWalkTest(collisionFeatures,world.bbox||[-1000,-1000,1000,1000]);

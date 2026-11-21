@@ -102,7 +102,7 @@ async function prepare(id){
   }
   const active=manager.active;
   active.stats.setQuality(quality);
-  await active.stats.streaming?.prime({maple:Boolean(point.maple),pond:Boolean(point.pond),cherry:Boolean(point.cherry||point.id==='40-expanded-cherry-hill')});
+
   const world=active.world,origin=world.mode==='osm'?'OSM REAL':'DEMO';
   const [minX,minZ,maxX,maxZ]=world.bbox;
   const geographicBounds=origin==='OSM REAL'&&world.origin?{
@@ -142,6 +142,7 @@ async function prepare(id){
   active.stats.setQuality(quality);
   active.stats.animateMemoryMarkers?.(0);
   camera=frameCamera(point,world,position);
+  await active.stats.streaming?.prime({focus:position,maple:Boolean(point.maple),pond:Boolean(point.pond),cherry:Boolean(point.cherry||point.id==='40-expanded-cherry-hill')});
   if(camera.isOrthographicCamera)active.stats.setDetailFocus?.();
   else active.stats.setDetailFocus?.(camera.position.x,camera.position.z);
   render();
@@ -273,7 +274,7 @@ function expandedTerrain(){
   const chunks=scene.children.filter(mesh=>mesh.name==='terrain-chunk').length;
   return {status:chunks>0&&waterBlocked&&memoryGrounded&&landmarks.every(site=>site.local)?'passed':'failed',
     source,coverage,landmarks,chunks,waterBlocked,memoryGrounded,spawnGrounded:stats.canWalk(...spawn),
-    train:{status:'pending',reference:'https://www.toronto.ca/legdocs/mmis/2026/gg/bgrd/backgroundfile-284637.pdf'},
+    train:{status:'static',routeStatus:'pending',reference:'https://www.toronto.ca/legdocs/mmis/2026/gg/bgrd/backgroundfile-284637.pdf'},
     limits:['Recorte geográfico da primeira entrega, modelos de edifício ainda genéricos.',
       'Superfícies esportivas cartográficas, sem equipamentos detalhados.',
       'Precisão vertical local não verificada em campo. A superfície do lago não é batimetria.']};

@@ -1,3 +1,5 @@
+import {corridors,loadCorridor} from './park-corridor-trees.js';
+import {buildGrenadierStop,stopBounds} from './grenadier-stop.js';
 import {buildNorthernSports} from './park-sports.js';
 import {assetUrl} from './asset-url.js';
 import * as THREE from 'three';
@@ -284,6 +286,25 @@ export function highParkStreaming(scene,world,sun,style,paths,activateEntrance,b
         dispose(){group.removeFromParent();disposeScene(group);}};
     },
   });
+  if(world.dataset==='high-park-expanded')manifests.push({
+    id:'high-park:grenadier-stop',bounds:stopBounds,loadRadius:125,keepRadius:215,lane:'stop',
+    lods:['high','balanced','low'],assets:{source:'OSM café footprint; static train at documented stop area',shared:[]},
+    async load(signal,frame){
+      await frame();signal.throwIfAborted();
+      const group=buildGrenadierStop(world,quality);
+      return {mount(){scene.add(group);},estimatedGeometryBytes:estimatedGeometry(group),
+        dispose(){group.removeFromParent();disposeScene(group);}};
+    },
+  });
+  if(world.dataset==='high-park-expanded')for(const corridor of corridors)manifests.push({
+    id:'high-park:'+corridor.id,bounds:corridor.bounds,loadRadius:92,keepRadius:167,lane:'corridor',
+    lods:['high','balanced'],hasDetail:()=>quality!=='low',assets:{source:'Shared authored maple and oak GLBs',shared:[]},
+    async load(signal,frame){
+      await frame();signal.throwIfAborted();
+      const art=await loadCorridor(world,corridor,quality,signal);
+      return {mount(){scene.add(art.root);},estimatedGeometryBytes:estimatedGeometry(art.root),dispose:art.dispose};
+    },
+  });
   const stream=new WorldStreaming(manifests);
   return {
     add(...data){
@@ -320,12 +341,25 @@ export function highParkStreaming(scene,world,sun,style,paths,activateEntrance,b
       if(next===quality)return;
       quality=next;
       for(const sector of stream.sectors)
-        if(sector.id===mapleSector||((sector.id.startsWith(cherryHill.id+':')||sector.id.startsWith((seasonalGrove?.id??'')+':'))&&!sector.hasDetail()))stream.evict(sector);
+        if(sector.lane==='corridor'||sector.id===mapleSector||((sector.id.startsWith(cherryHill.id+':')||sector.id.startsWith((seasonalGrove?.id??'')+':'))&&!sector.hasDetail()))stream.evict(sector);
       showCherryLod();showSeasonalLod();
     },
-    async prime({cherry=false,pond=false,maple=false}={}){
-      await stream.prime(sector=>sector.id===mapleSector?maple:sector.id===pondDetailId?pond:
-        !sector.id.startsWith('west-road-sakura:')&&cherry===sector.id.startsWith(cherryHill.id+':'));
+    async prime({cherry=false,pond=false,maple=false,focus=null}={}){
+      await stream.prime(sector=>{
+        if(sector.id===mapleSector)return maple;
+        if(sector.id===pondDetailId)return pond;
+        if(sector.id==='high-park:grenadier-stop'||sector.id==='high-park:northern-sports'){
+          if(!focus)return false;
+          const [x,z]=focus,[a,b,c,d]=sector.bounds;
+          return Math.hypot(Math.max(a-x,0,x-c),Math.max(b-z,0,z-d))<105;
+        }
+        if(sector.lane==='corridor'){
+          if(!focus)return false;
+          const [x,z]=focus,[a,b,c,d]=sector.bounds;
+          return Math.hypot(Math.max(a-x,0,x-c),Math.max(b-z,0,z-d))<65;
+        }
+        return !sector.id.startsWith('west-road-sakura:')&&cherry===sector.id.startsWith(cherryHill.id+':');
+      });
       if(maple&&garden){garden.coverage.value=1;garden.root.visible=true;}
       if(pond&&shore)shore.coverage.value=1;
       if(cherry){blend=Number(quality!=='low');lowCoverage=1;showCherryLod();}

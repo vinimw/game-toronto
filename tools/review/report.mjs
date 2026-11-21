@@ -84,10 +84,10 @@ export async function writeReport(file,{metadata,performance,geography,issues,im
     (metadata.entranceComparison?'<p><a href="north-entrance-comparison.html">Entrada norte · comparação com a foto e percurso</a> · <a href="world-streaming.json">Streaming de setores</a> · <a href="cherry-hill.json">Hatchling Hill</a></p>':'')+
     '<h2>High Park World Progress</h2><ul>'+
     '<li>Entrada norte · landmark detalhado, setor de entrada existente.</li>'+
-    '<li>Instalações esportivas do norte · OSM/HRDEM, linhas e superfícies carregadas por setor. Equipamentos e percurso integrado pendentes.</li>'+
+    '<li>Instalações esportivas do norte · ambiente 3D com marcações, redes e postes. Acesso integrado e cercamento ainda em verificação.</li>'+
     '<li>Cherry Hill, Grenadier Pond e Maple Leaf Garden · landmarks detalhados, com diagnósticos próprios.</li>'+
-    '<li>Grenadier Café, zoológico e Jamie Bell · base geográfica. Modelagem específica pendente.</li>'+
-    '<li>Trackless Train · serviço documentado. Modelo e rota ainda pendentes.</li></ul>'+
+    '<li>Grenadier Café · exterior modelado e carregado por setor. Zoológico e Jamie Bell · base geográfica.</li>'+
+    '<li>Trackless Train · modelo estático no entorno da parada do café. Circulação pendente.</li></ul>'+
     '<h2>Galeria</h2><div class="gallery">'+checkedImages.join('')+'</div>'+
     (missing.length?details('Capturas ausentes',missing):'')+'<h2>Desempenho estático</h2>'+table+
     details('Métricas por captura',performance.captures)+'<h2>Desempenho em movimento</h2>'+motionTable+

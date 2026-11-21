@@ -1,7 +1,27 @@
 import * as THREE from 'three';
-import {pointInPolygon} from './geo.js';
+
 
 export const northernSports=[14344501,14344509,14344528,680982127,1116261446,1116261447,1116261448];
+
+export function tennisNets(world){
+  return world.features.filter(f=>northernSports.includes(f.osmId)&&f.tags.sport==='tennis'&&f.points.length===5).map(feature=>{
+    const ring=feature.points;
+    const length=i=>Math.hypot(ring[i][0]-ring[i+1][0],ring[i][1]-ring[i+1][1]);
+    const side=length(0)>length(1)?0:1;
+    const middle=i=>ring[i].map((x,k)=>(x+ring[(i+1)%4][k])/2);
+    return {id:feature.osmId,a:middle(side),b:middle(side+2)};
+  });
+}
+
+export function tennisBlocks(world){
+  return tennisNets(world).map(({id,a,b})=>{
+    const length=Math.hypot(b[0]-a[0],b[1]-a[1]);
+    const nx=(b[1]-a[1])/length*.08,nz=(a[0]-b[0])/length*.08;
+    const y=Math.min(world.terrain.at(...a),world.terrain.at(...b));
+    return {id:'tennis-net:'+id,kind:'building',minHeight:y,height:y+1.25,
+      points:[[a[0]+nx,a[1]+nz],[b[0]+nx,b[1]+nz],[b[0]-nx,b[1]-nz],[a[0]-nx,a[1]-nz]]};
+  });
+}
 
 export function buildNorthernSports(world){
   const root=new THREE.Group(),chalk=[],clay=[],tennis=[];
@@ -76,5 +96,34 @@ export function buildNorthernSports(world){
     geometry.computeVertexNormals();
     root.add(new THREE.Mesh(geometry,new THREE.MeshLambertMaterial({color,side:THREE.DoubleSide})));
   }
+  const posts=new THREE.MeshStandardMaterial({color:0x42483b,roughness:.63});
+  const band=new THREE.MeshStandardMaterial({color:0xe7dfc9,roughness:.84});
+  const cord=new THREE.LineBasicMaterial({color:0x333b32,transparent:true,opacity:.72});
+  const strings=[];
+  const postGeo=new THREE.CylinderGeometry(.035,.042,1.12,7);
+  for(const {a,b} of tennisNets(world)){
+    const length=Math.hypot(b[0]-a[0],b[1]-a[1]);
+    const point=(t,h)=>new THREE.Vector3(
+      THREE.MathUtils.lerp(a[0],b[0],t),
+      THREE.MathUtils.lerp(world.terrain.at(...a),world.terrain.at(...b),t)+h,
+      THREE.MathUtils.lerp(a[1],b[1],t));
+    for(const t of [0,1]){
+      const post=new THREE.Mesh(postGeo,posts);post.position.copy(point(t,.56));root.add(post);
+    }
+    const heights=t=>1.07-.13*Math.sin(Math.PI*t);
+    const divisions=Math.ceil(length/.12);
+    for(let i=0;i<=divisions;i++){
+      const t=i/divisions;
+      strings.push(...point(t,.04).toArray(),...point(t,heights(t)).toArray());
+    }
+    for(let i=1;i<=9;i++)for(let j=0;j<12;j++){
+      for(const t of [j/12,(j+1)/12])strings.push(...point(t,heights(t)*i/10).toArray());
+    }
+    const rail=new THREE.TubeGeometry(new THREE.CatmullRomCurve3([point(0,1.07),point(.5,.94),point(1,1.07)]),12,.018,4,false);
+    root.add(new THREE.Mesh(rail,band));
+  }
+  const net=new THREE.BufferGeometry();
+  net.setAttribute('position',new THREE.Float32BufferAttribute(strings,3));
+  root.add(new THREE.LineSegments(net,cord));
   return root;
 }
