@@ -71,10 +71,16 @@ export async function evaluateConnectedExploration(browser,target,bundle){
       }finally{await page.keyboard.up('w');}
       const file=recording?id+'-connected.webm':null;
       const video=file?{file,validation:await recording.stop(join(bundle,file))}:null;
-      const {intervals,...detail}=run;
+      const {intervals,samples:timeline,...detail}=run;
       const ordered=[...intervals].sort((a,b)=>a-b);
       results.push({id,mobile,plan,...detail,video,errors,status:errors.length?'failed':run.status,
-        ...frameStatistics(intervals),p99Ms:ordered[Math.ceil(ordered.length*.99)-1]??null,
+        ...frameStatistics(intervals),timeline,
+        visiblePopIns:[...timeline.reduce((counts,sample)=>{
+          for(const sector of sample.sectors)
+            counts.set(sector.id,Math.max(counts.get(sector.id)??0,sector.visiblePopInCount??0));
+          return counts;
+        },new Map()).values()].reduce((total,count)=>total+count,0),
+        p99Ms:ordered[Math.ceil(ordered.length*.99)-1]??null,
         maxMs:ordered.at(-1)??null,longFrames:intervals.filter(ms=>ms>50).length});
     }catch(error){results.push({id,mobile,status:'failed',error:error.message});}
     finally{try{await recording?.stop();}finally{await context.close();}}
