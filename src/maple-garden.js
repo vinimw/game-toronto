@@ -6,16 +6,38 @@ export const mapleWay=251569209;
 export const mapleSector='high-park:maple-leaf-garden';
 export const mapleBounds=[-166,992,-111,1051];
 
-// Ground-level colour continuity, even before the detailed plants load.
+function drapedSurface(world,ring,holes,offset){
+  const loops=[ring,...holes];
+  const faces=THREE.ShapeUtils.triangulateShape(
+    ring.map(([x,z])=>new THREE.Vector2(x,z)),
+    holes.map(hole=>hole.map(([x,z])=>new THREE.Vector2(x,z))),
+  );
+  const points=loops.flat(),positions=[];
+  function triangle(a,b,c){
+    const corners=[a,b,c];
+    const squared=corners.map((p,i)=>{
+      const q=corners[(i+1)%3];
+      return (p[0]-q[0])**2+(p[1]-q[1])**2;
+    });
+    const longest=squared.indexOf(Math.max(...squared));
+    if(squared[longest]>1.35**2){
+      const p=corners[longest],q=corners[(longest+1)%3],r=corners[(longest+2)%3];
+      const mid=[(p[0]+q[0])/2,(p[1]+q[1])/2];
+      triangle(p,mid,r);triangle(mid,q,r);
+      return;
+    }
+    for(const [x,z] of corners)positions.push(x,world.terrain.at(x,z)+offset,z);
+  }
+  for(const [a,b,c] of faces)triangle(points[c],points[b],points[a]);
+  return positions;
+}
+
 export function mapleGardenBase(world,feature){
-  const ring=feature.points.slice(0,-1);
-  const positions=[],colors=[],tint=new THREE.Color();
-  const faces=THREE.ShapeUtils.triangulateShape(ring.map(([x,z])=>new THREE.Vector2(x,z)),[]);
-  const tones=[0x833939,0x93463d,0x743238,0x8a393d];
-  for(const face of faces)for(const index of [...face].reverse()){
-    const [x,z]=ring[index];
-    positions.push(x,world.terrain.at(x,z)+.057,z);
-    colors.push(...tint.setHex(tones[index%tones.length]).toArray());
+  const positions=drapedSurface(world,feature.points.slice(0,-1),[],.057),colors=[],tint=new THREE.Color();
+  for(let i=0;i<positions.length;i+=3){
+    const x=positions[i],z=positions[i+2];
+    tint.setHex(0x843c37).multiplyScalar(.93+.07*Math.sin(x*2.4+z*.73)+.05*Math.sin(z*3.6-x));
+    colors.push(...tint.toArray());
   }
   const geometry=new THREE.BufferGeometry();
   geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
@@ -29,16 +51,9 @@ export function buildMapleGarden(world,feature,quality){
   const root=new THREE.Group(),random=seeded(mapleWay);
   root.name=mapleSector;
   const ring=feature.points.slice(0,-1);
-  const vertices=ring.map(([x,z])=>new THREE.Vector2(x,z));
-  const faces=THREE.ShapeUtils.triangulateShape(vertices,[]);
   const height=(x,z)=>world.terrain.at(x,z);
-  const top=[],edge=[];
   const bedHeight=.085;
-  for(const face of faces){
-    for(const index of [...face].reverse()){
-      const [x,z]=ring[index];top.push(x,height(x,z)+bedHeight,z);
-    }
-  }
+  const top=drapedSurface(world,ring,[],bedHeight),edge=[];
   for(let i=0;i<ring.length;i++){
     const [x,z]=ring[i],[u,v]=ring[(i+1)%ring.length];
     const a=[x,height(x,z)+.025,z],b=[u,height(u,v)+.025,v];
@@ -111,15 +126,11 @@ export function buildMapleGarden(world,feature,quality){
   });
   root.add(blooms);
   const center=[-139.2,1021.95];
-  const apron=[];
-  for(let i=0;i<72;i++){
-    const point=(j,r)=>[center[0]+Math.cos(j*Math.PI/36)*r,center[1]+Math.sin(j*Math.PI/36)*r];
-    const emit=([x,z])=>apron.push(x,height(x,z)+.036,z);
-    for(let r=0;r<9;r++){
-      const a=point(i,r),b=point(i+1,r),c=point(i,r+1),d=point(i+1,r+1);
-      for(const vertex of [a,c,d,a,d,b])emit(vertex);
-    }
-  }
+  const apronRing=Array.from({length:72},(_,i)=>{
+    const angle=i*Math.PI/36;
+    return [center[0]+Math.cos(angle)*9,center[1]+Math.sin(angle)*9];
+  });
+  const apron=drapedSurface(world,apronRing,[ring],.036);
   const concrete=material(0xcac6b7);
   concrete.polygonOffset=true;concrete.polygonOffsetFactor=-2;
   root.add(new THREE.Mesh(geometry(apron),concrete));
