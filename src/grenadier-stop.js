@@ -1,3 +1,4 @@
+import {buildingPlacement} from './building-grounding.js';
 import * as THREE from 'three';
 
 export const cafeWay=125699284;
@@ -79,7 +80,7 @@ export function buildGrenadierStop(world,quality){
   }
   const cafe=world.features.find(f=>f.osmId===cafeWay);
   if(cafe){
-    const ring=cafe.points.slice(0,-1),floor=Math.min(...ring.map(p=>world.terrain.at(...p)));
+    const ring=cafe.points.slice(0,-1),floor=buildingPlacement(world,cafe).floor;
     const outline=ring.map(([x,z])=>new THREE.Vector2(x,z));
     const center=ring.reduce(([x,z],p)=>[x+p[0]/ring.length,z+p[1]/ring.length],[0,0]);
     const roof=[];

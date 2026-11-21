@@ -1,3 +1,4 @@
+import {evaluateGroundingWalk} from './grounding-walk.mjs';
 import {evaluateConnectedExploration} from './connected-exploration.mjs';
 import {evaluateCherryHill} from './cherry-hill.mjs';
 import {evaluateWorldStreaming} from './world-streaming.mjs';
@@ -109,7 +110,7 @@ const safeMessage=message=>String(message)
   .replace(/(bearer\s+|(?:token|password|secret|api[_-]?key)\s*[:=]\s*)[^\s,;]+/gi,'$1[redacted]')
   .slice(0,1200);
 
-async function collectProfile(browser,target,dir,profileId,expanded=false,legacyEntrance=false,legacyCherry=false){
+async function collectProfile(browser,target,dir,profileId,expanded=false,legacyEntrance=false,legacyCherry=false,legacyGrounding=false){
   const profile=reviewProfiles[profileId];
   const page=await browser.newPage({viewport:profile.viewport,deviceScaleFactor:profile.deviceScaleFactor,
     isMobile:profile.mobileViewportSimulation,hasTouch:profile.mobileViewportSimulation,
@@ -119,9 +120,10 @@ async function collectProfile(browser,target,dir,profileId,expanded=false,legacy
   if(expanded)url.searchParams.set('park','expanded');
   if(legacyEntrance)url.searchParams.set('entrance','legacy');
   if(legacyCherry)url.searchParams.set('cherry','legacy');
+  if(legacyGrounding)url.searchParams.set('grounding','legacy');
   const origin=url.origin;
   const issues=[],captures=[],metrics=[];
-  const selected=points.filter(point=>(point.profile??'desktop')===profileId&&Boolean(point.expanded)===expanded&&Boolean(point.legacyEntrance)===legacyEntrance&&Boolean(point.legacyCherry)===legacyCherry);
+  const selected=points.filter(point=>(point.profile??'desktop')===profileId&&Boolean(point.expanded)===expanded&&Boolean(point.legacyEntrance)===legacyEntrance&&Boolean(point.legacyCherry)===legacyCherry&&Boolean(point.legacyGrounding)===legacyGrounding);
   let geography={status:'unavailable'},motion=null;
   const geographicFiles=[];
   let current=null;
@@ -201,7 +203,7 @@ async function collectProfile(browser,target,dir,profileId,expanded=false,legacy
         console.error('[review] falha em '+point.id+' · '+reason);
       }
     }
-    if(profileId==='desktop'&&expanded&&!legacyEntrance&&!legacyCherry)geography=await page.evaluate(()=>window.gameLoveReview.expandedTerrain());
+    if(profileId==='desktop'&&expanded&&!legacyEntrance&&!legacyCherry&&!legacyGrounding)geography=await page.evaluate(()=>window.gameLoveReview.expandedTerrain());
     if(profileId==='desktop'&&!expanded){
       current='motion-high-park';
       try{
@@ -303,7 +305,8 @@ async function main(){
     profiles.push(terrainDesktop,await collectProfile(browser,started.target,bundle,'mobile',true),
       await collectProfile(browser,started.target,bundle,'desktop',true,true),
       await collectProfile(browser,started.target,bundle,'mobile',true,true),
-      await collectProfile(browser,started.target,bundle,'desktop',true,false,true));
+      await collectProfile(browser,started.target,bundle,'desktop',true,false,true),
+      await collectProfile(browser,started.target,bundle,'desktop',true,false,false,true));
     const terrainReport=terrainDesktop.geography;
     const terrainFiles=['geography/high-park-expanded.osm-source.json.gz','geography/high-park-hrdem.tif'];
     await mkdir(join(bundle,'geography'),{recursive:true});
@@ -315,6 +318,9 @@ async function main(){
     await Promise.all(terrainFiles.map((file,i)=>writeFile(join(bundle,file),terrainAssets[i])));
     terrainReport.snapshots={files:terrainFiles,verified};
     terrainReport.gameplay=await evaluateTerrainGameplay(browser,started.target,safeMessage);
+    const groundingWalk=await evaluateGroundingWalk(browser,started.target,bundle);
+    checks.buildingGrounding={status:terrainReport.buildingGrounding?.status==='passed'&&groundingWalk.status==='passed'?'passed':'failed',report:'building-grounding.json'};
+    if(checks.buildingGrounding.status==='failed')terrainDesktop.issues.push({type:'building-grounding-failed',message:groundingWalk.error??'Consulte building-grounding.json.'});
     checks.expandedTerrain={status:verified&&terrainReport.gameplay.status==='passed'?terrainReport.status:'failed',
       report:'high-park-terrain-review.json'};
     console.log('[review] High Park ampliado: '+checks.expandedTerrain.status);
@@ -416,6 +422,7 @@ async function main(){
 
     await json('north-entrance-art.json',{status:entranceStatus,pairs:matchedEntrance,walk:entranceWalk,photo});
     await json('high-park-terrain-review.json',terrainReport);
+    await json('building-grounding.json',{git,exportedAt:startedAt,...terrainReport.buildingGrounding,walk:groundingWalk});
     await json('world-streaming.json',streaming);
     await json('cherry-hill.json',cherry);
     await json('grenadier-pond.json',pond);
@@ -439,7 +446,7 @@ async function main(){
 
     // Explicit allowlist. Nothing outside this staging directory can enter the archive.
     const files=['metadata.json','performance.json','console-errors.json','geographic-correspondence.json',
-      'report.html','connected-exploration.json',...connected.videos,'grenadier-cafe.json',...(cafe.video?[cafe.video]:[]),'maple-garden.json',...(maple.video?[maple.video]:[]),'grenadier-pond.json',...(pond.video?[pond.video]:[]),'cherry-hill.json',...(cherry.video?[cherry.video]:[]),'world-streaming.json',...streaming.videos,...entranceFiles,'high-park-terrain-review.json',...terrainFiles,'memory-gameplay.json',...movementFiles,...standaloneFiles,...geographicFiles,...captures.flatMap(capture=>capture.file?[capture.file]:[]),...comparisonFiles];
+      'report.html','connected-exploration.json',...connected.videos,'grenadier-cafe.json',...(cafe.video?[cafe.video]:[]),'maple-garden.json',...(maple.video?[maple.video]:[]),'grenadier-pond.json',...(pond.video?[pond.video]:[]),'cherry-hill.json',...(cherry.video?[cherry.video]:[]),'world-streaming.json',...streaming.videos,...entranceFiles,'high-park-terrain-review.json','building-grounding.json',...(groundingWalk.video?[groundingWalk.video]:[]),...terrainFiles,'memory-gameplay.json',...movementFiles,...standaloneFiles,...geographicFiles,...captures.flatMap(capture=>capture.file?[capture.file]:[]),...comparisonFiles];
     if((await run('zip',['-q','-X',archive,...files],{cwd:bundle})).code!==0)
       throw new Error('Falha ao criar o ZIP.');
     if((await run('unzip',['-tq',archive],{quiet:true})).code!==0)

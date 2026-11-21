@@ -29,7 +29,7 @@ document.body.append(renderer.domElement);
 const evidenceByScene=new WeakMap();
 const manager=new SceneManager({manifest:regionManifest,loadRegion,avatar,buildScene(scene,world,portals){
   const evidence=world.mode==='osm'&&!world.terrain?collectRenderedGeometry():null;
-  const stats=buildWorld(scene,world,portals,evidence);
+  const stats=buildWorld(scene,{...world,captureBuildingBounds:true},portals,evidence);
   if(evidence)evidenceByScene.set(scene,evidence.parts);
   return stats;
 }});
@@ -145,6 +145,24 @@ async function prepare(id){
   await active.stats.streaming?.prime({focus:position,maple:Boolean(point.maple),pond:Boolean(point.pond),cherry:Boolean(point.cherry||point.id==='40-expanded-cherry-hill')});
   if(camera.isOrthographicCamera)active.stats.setDetailFocus?.();
   else active.stats.setDetailFocus?.(camera.position.x,camera.position.z);
+  const debugGroup=active.scene.getObjectByName('review-building-grade');
+  if(debugGroup){debugGroup.removeFromParent();debugGroup.geometry.dispose();debugGroup.material.dispose();}
+  if(point.groundingDebug){
+    const vertices=[],colors=[];
+    for(const {feature,placement} of active.stats.buildingPlacements){
+      if(Math.hypot(feature.points[0][0]-122,feature.points[0][1]-85)>100)continue;
+      for(let i=1;i<feature.points.length;i++){
+        const a=feature.points[i-1],b=feature.points[i];
+        for(const [x,z] of [a,b]){vertices.push(x,placement.floor+.03,z);colors.push(1,.3,.1);}
+        for(const [x,z] of [a,b]){vertices.push(x,world.terrain.at(x,z)+.06,z);colors.push(.25,.9,1);}
+      }
+    }
+    const geometry=new THREE.BufferGeometry();
+    geometry.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));
+    geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
+    const lines=new THREE.LineSegments(geometry,new THREE.LineBasicMaterial({vertexColors:true,depthTest:false}));
+    lines.name='review-building-grade';lines.renderOrder=8;active.scene.add(lines);
+  }
   render();
   currentPoint=id;
   document.querySelector('#review-attribution')?.remove();
@@ -272,7 +290,26 @@ function expandedTerrain(){
   const memory=stats.memoryPoints[0],marker=memory&&scene.getObjectByName('memory:'+memory.memory.id);
   const memoryGrounded=Boolean(marker&&Math.abs(marker.position.y-terrain.at(...memory.position))<.001);
   const chunks=scene.children.filter(mesh=>mesh.name==='terrain-chunk').length;
-  return {status:chunks>0&&waterBlocked&&memoryGrounded&&landmarks.every(site=>site.local)?'passed':'failed',
+  const buildings=stats.buildingPlacements.map(({feature,placement,height,renderedWorldBounds})=>{
+    const points=feature.points,x=points.map(p=>p[0]),z=points.map(p=>p[1]);
+    const center=[(Math.min(...x)+Math.max(...x))/2,(Math.min(...z)+Math.max(...z))/2];
+    const basement=Number(feature.tags?.layer)<0||feature.tags?.location==='underground';
+    const buried=placement.high-placement.floor,floating=placement.bottom-placement.low;
+    return {osmId:feature.osmId,type:'building',local:center,geographic:geographicPosition(center,world.origin),
+      terrain:{min:placement.low,max:placement.high},baseY:placement.floor,foundationBaseY:placement.bottom,
+      visibleWallHeightAtHighestGrade:height-Math.max(0,buried),legacyBurialMeters:placement.high-placement.legacy,
+      maximumBaseDifference:Math.max(Math.abs(buried),Math.abs(placement.floor-placement.low)),
+      renderedWorldBounds:renderedWorldBounds??null,
+      estimatedWorldBounds:{min:[Math.min(...x),placement.bottom,Math.min(...z)],
+        max:[Math.max(...x),placement.floor+Math.max(height,feature.osmId===125699284?6.25:height),Math.max(...z)]},
+      status:basement?'insufficient-data':buried>.025?'buried':floating>.025?'floating':placement.foundation?'foundation':'grounded'};
+  });
+  const invalid=buildings.filter(b=>['buried','floating'].includes(b.status)).length;
+  const buildingGrounding={status:invalid?'failed':'passed',total:buildings.length,invalid,
+    legacyBuriedOver25cm:buildings.filter(b=>b.legacyBurialMeters>.25).length,
+    source:'HRDEM triangles clipped to OSM footprint; bounds estimated from placement and model height.',
+    requestedHud:{east:122,north:-85,local:[122,85]},buildings};
+  return {buildingGrounding,status:!invalid&&chunks>0&&waterBlocked&&memoryGrounded&&landmarks.every(site=>site.local)?'passed':'failed',
     source,coverage,landmarks,chunks,waterBlocked,memoryGrounded,spawnGrounded:stats.canWalk(...spawn),
     train:{status:'static',routeStatus:'pending',reference:'https://www.toronto.ca/legdocs/mmis/2026/gg/bgrd/backgroundfile-284637.pdf'},
     limits:['Recorte geográfico da primeira entrega, modelos de edifício ainda genéricos.',

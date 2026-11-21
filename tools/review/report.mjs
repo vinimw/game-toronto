@@ -82,6 +82,7 @@ export async function writeReport(file,{metadata,performance,geography,issues,im
     details('Perfis e parâmetros por captura',{profiles:metadata.profiles, reproducibility:metadata.reproducibility,
       captures:metadata.captures})+
     (metadata.entranceComparison?'<p><a href="north-entrance-comparison.html">Entrada norte · comparação com a foto e percurso</a> · <a href="world-streaming.json">Streaming de setores</a> · <a href="cherry-hill.json">Hatchling Hill</a></p>':'')+
+    '<h2>Implantação de edifícios</h2><p><a href="building-grounding.json">Diagnóstico de cotas e fundações</a> · vistas 26–29 e 96–99.</p>'+
     '<h2>High Park World Progress</h2>'+
     '<table><thead><tr><th>Requisito</th><th>Evidência</th><th>Limitação</th><th>Resultado</th></tr></thead><tbody>'+
     '<tr><td>Conexões caminháveis</td><td><a href="connected-exploration.json">Diagnóstico por corredor</a></td><td>Mobile emulado</td><td>'+

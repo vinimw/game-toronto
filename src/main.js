@@ -287,6 +287,7 @@ if(reviewCapture)window.stageCameraReview=([x,z],yaw)=>{
   cameraClearance=null;
 };
 if(reviewCapture){
+  window.groundingReviewHeight=(x,z)=>stats.terrain?.at(x,z)??0;
   window.planExplorationReview=id=>{
     const connection=explorationConnections.find(route=>route.id===id);
     if(!connection||world?.dataset!=='high-park-expanded')throw new Error('Percurso de revisão inválido.');

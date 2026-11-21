@@ -1,3 +1,4 @@
+import {buildingPlacement,addBuildingFoundation} from './building-grounding.js';
 import {mapleWay,mapleGardenBase} from './maple-garden.js';
 import {cafeWay,trainFootprints} from './grenadier-stop.js';
 import {tennisBlocks} from './park-sports.js';
@@ -94,6 +95,12 @@ export function buildWorld(scene,world,portals=[],evidence){
   let vegetation,cameraOccluders=new Set();
   const activeSakuraArts=new Set();
   const furniture=[],cameraObstacles=[],clearings=[];
+  const buildingPlacements=[];
+  function captureBuildingBounds(model,record){
+    if(!world.captureBuildingBounds)return;
+    const bounds=new THREE.Box3().setFromObject(model);
+    if(!bounds.isEmpty())record.renderedWorldBounds={min:bounds.min.toArray(),max:bounds.max.toArray()};
+  }
   const landmarks=[],buildingBatches=terrain?terrainBuildingBatches(scene):null;
   const streaming=terrain?highParkStreaming(scene,world,sun,style,pathLayers,art=>{
     if(entrance)cameraVolumes.splice(cameraVolumes.length-entrance.cameraVolumes.length);
@@ -103,9 +110,11 @@ export function buildWorld(scene,world,portals=[],evidence){
       art.setQuality(quality);
       art.setDetailFocus(...detailFocus);
     }
-  },(feature,index,floor)=>{
+  },(feature,index,placement)=>{
     const model=makeBuilding(feature,index);
-    model.position.y=floor;
+    model.position.y=placement.floor;
+    addBuildingFoundation(model,feature.points,placement);
+    captureBuildingBounds(model,buildingPlacements[index]);
     return model;
   },{
     getSeasonalTreePlacements:()=>vegetation?.seasonalTreePlacements??[],
@@ -117,23 +126,30 @@ export function buildWorld(scene,world,portals=[],evidence){
   }):null;
   buildings.forEach((feature,index)=>{
     const definition=findLandmark(world,feature);
-    const floor=terrain?Math.min(...feature.points.map(point=>terrain.at(...point))):0;
-    const blocker={kind:'building',id:feature.osmId??null,points:feature.points,minHeight:floor};
+    const placement=buildingPlacement(world,feature),{floor}=placement;
+    const record={feature,placement,height:buildingHeight(feature.tags)};
+    buildingPlacements.push(record);
+    const blocker={kind:'building',id:feature.osmId??null,points:feature.points,minHeight:terrain?placement.bottom:floor};
     if(world.mode==='demo'&&feature.visual==='park-cafe'){
       const cafe=buildDemoCafe(feature);
       scene.add(cafe.group);furniture.push(...cafe.obstacles);
       cameraObstacles.push({...blocker,height:cafe.ridge});
     }else if(definition){
       const model=definition.build(feature);
-      model.group.position.y+=floor;scene.add(model.group);
+      model.group.position.y+=floor;
+      addBuildingFoundation(model.group,feature.points,placement);scene.add(model.group);
+      record.height=model.height;
+      captureBuildingBounds(model.group,record);
       landmarks.push({definition,model});
       evidence?.polygon(feature,model.roof);
       cameraObstacles.push({...blocker,height:model.height+floor});
       if(model.forecourt)clearings.push(model.forecourt);
     }else{
-      const mesh=streaming?.add(feature,index,floor)?null:makeBuilding(feature,index);
+      const mesh=streaming?.add(feature,index,placement)?null:makeBuilding(feature,index);
       if(mesh){
         mesh.position.y=floor;
+        addBuildingFoundation(mesh,feature.points,placement);
+        captureBuildingBounds(mesh,record);
         if(buildingBatches)buildingBatches.add(mesh,feature.points[0]);
         else {scene.add(mesh);evidence?.polygon(feature,mesh.children[1]);}
       }
@@ -203,7 +219,7 @@ export function buildWorld(scene,world,portals=[],evidence){
       [px-1.8,pz-.125],[px+1.8,pz-.125],[px+1.8,pz+.125],[px-1.8,pz+.125],
     ]});
   }
-  return {terrain,streaming,get entranceArt(){return entrance?.evidence;},environment:environment.id,canWalk,cameraObstacles,cameraVolumes,setCameraOccluders,setQuality,setDetailFocus,vegetationMetrics,memoryPoints,animateMemoryMarkers,trees,
+  return {terrain,buildingPlacements,streaming,get entranceArt(){return entrance?.evidence;},environment:environment.id,canWalk,cameraObstacles,cameraVolumes,setCameraOccluders,setQuality,setDetailFocus,vegetationMetrics,memoryPoints,animateMemoryMarkers,trees,
     landmarks:landmarks.map(({definition:{build,...identity}})=>identity),
     counts:{paths:paths.length,buildings:buildings.length,water:waters.length,trees}};
 }

@@ -164,3 +164,17 @@ for(const [id,label,local,way,eye,look] of [
   const view=terrainView(id,label,local,way,eye,look);
   points.push({...view,cherry:id==='94-west-connected',pond:id==='95-hillside-connected'});
 }
+
+const groundingViews=[
+  ['96-grounding-hud','Implantação · posição indicada no HUD',[122,85],[-4,2.8,-5],[-12,0,41]],
+  ['97-grounding-side','Implantação · fachada lateral',[122,85],[25,2.8,34],[-14,0,38]],
+  ['98-grounding-aerial','Implantação · vista elevada',[122,85],[36,50,3],[-10,0,41]],
+];
+for(const [id,label,local,eye,look] of groundingViews){
+  const point=terrainView(id,label,local,43805272,eye,look);
+  points.push(point,{...point,id:id.replace(/^9[678]/,String(Number(id.slice(0,2))-70))+'-before',label:label+' · antes',legacyGrounding:true});
+}
+points.push(
+  {...terrainView('99-grounding-debug','Implantação · laranja: piso; azul: terreno',[122,85],43805272,[25,4,28],[-14,0,38]),groundingDebug:true},
+  terrainView('29-grounding-mobile','Implantação · revisão mobile',[122,85],43805272,[-3,2.8,-6],[-10,1,40],'mobile'),
+);

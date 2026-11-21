@@ -13,6 +13,9 @@ export function terrainBuildingBatches(scene){
       group.updateMatrixWorld(true);
       for(const mesh of group.children){
         const geometry=mesh.geometry.index?mesh.geometry.toNonIndexed():mesh.geometry.clone();
+        // The merged material is untextured. Retain a common vertex layout
+        // for the roof, walls and independently generated foundation.
+        geometry.deleteAttribute('uv');
         geometry.applyMatrix4(mesh.matrixWorld);
         const colors=new Float32Array(geometry.attributes.position.count*3);
         const {r,g,b}=mesh.material.color;
