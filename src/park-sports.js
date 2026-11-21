@@ -1,3 +1,4 @@
+import {parkSurfaceFinish} from './park-surface-finish.js';
 import * as THREE from 'three';
 
 
@@ -24,7 +25,7 @@ export function tennisBlocks(world){
 }
 
 export function buildNorthernSports(world){
-  const root=new THREE.Group(),chalk=[],clay=[],tennis=[];
+  const root=new THREE.Group(),chalk=[],clay=[],tennis=[],courtEdges=[];
   root.name='high-park:northern-sports';
   function vertex(out,x,z,y=.065){out.push(x,world.terrain.at(x,z)+y,z);}
   function line(a,b,width=.115){
@@ -74,6 +75,19 @@ export function buildNorthernSports(world){
     for(let i=0;i<4;i++)line(inset[i],inset[(i+1)%4]);
     line(point(.5,0),point(.5,1));
     if(sport==='tennis'){
+      // A flush aggregate surround reads as an edge from the path without
+      // inventing a fence, closing entrances or changing court collisions.
+      for(let side=0;side<4;side++){
+        const next=(side+1)%4;
+        const sections=Math.ceil(sides[side]/1.4);
+        for(let j=0;j<sections;j++){
+          for(const [offset,inner] of [[0,0],[1,0],[1,1],[0,0],[1,1],[0,1]]){
+            const points=inner?inset:ring;
+            const p=points[side].map((n,k)=>THREE.MathUtils.lerp(n,points[next][k],(j+offset)/sections));
+            vertex(courtEdges,...p,.052);
+          }
+        }
+      }
       for(let u=0;u<10;u++)for(let v=0;v<5;v++)
         for(const [a,b] of [[0,0],[1,0],[1,1],[0,0],[1,1],[0,1]])
           vertex(tennis,...point((u+a)/10,(v+b)/5));
@@ -90,11 +104,12 @@ export function buildNorthernSports(world){
       for(let i=0;i<40;i++)line(anglePoint(i),anglePoint(i+1));
     }
   }
-  for(const [values,color] of [[chalk,0xe8e2c7],[clay,0x9b684a],[tennis,0x426d61]]){
+  for(const [values,color] of [[chalk,0xe8e2c7],[clay,0x9b684a],[tennis,0x426d61],[courtEdges,0x83826d]]){
     const geometry=new THREE.BufferGeometry();
     geometry.setAttribute('position',new THREE.Float32BufferAttribute(values,3));
     geometry.computeVertexNormals();
-    root.add(new THREE.Mesh(geometry,new THREE.MeshLambertMaterial({color,side:THREE.DoubleSide})));
+    const material=new THREE.MeshLambertMaterial({color,side:THREE.DoubleSide});
+    root.add(new THREE.Mesh(geometry,values===chalk?material:parkSurfaceFinish(material,'path',true)));
   }
   const posts=new THREE.MeshStandardMaterial({color:0x42483b,roughness:.63});
   const band=new THREE.MeshStandardMaterial({color:0xe7dfc9,roughness:.84});

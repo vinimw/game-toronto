@@ -1,6 +1,7 @@
+import {corridorPlantings,plantedPatches} from './park-corridor-planting.js';
 import * as THREE from 'three';
 import {seeded} from './geo.js';
-import {addCorridorUnderstory,corridorClearance} from './park-corridor-understory.js';
+import {addCorridorUnderstory,addCorridorBeds,corridorClearance} from './park-corridor-understory.js';
 import {collectResources,disposeScene} from './scene-resources.js';
 
 const variants=['maple-43','oak-31','maple-79','oak-67'];
@@ -10,6 +11,7 @@ export const corridors=[
   {id:'north-corridor',bounds:[-95,-78,24,130],trees:[[-47,-48],[-65,-15],[-33,57],[-82,90],[-45,-67],[-52,-61],[-40,47]]},
   {id:'west-road-corridor',bounds:[-210,475,-63,690],trees:[[-150,500],[-165,535],[-116,590],[-189,642],[-146,525],[-150,541],[-124,593],[-184,623]]},
   {id:'hillside-corridor',bounds:[-228,850,-120,982],trees:[[-183,885],[-165,910],[-151,938],[-132,965]]},
+  ...corridorPlantings,
   {"id":"north-sports-grove-0","bounds":[-13.29,-65.41,42.02,59.86],"trees":[[-5.29,-57.41],[1.67,-34.44],[7.89,-12.04],[34.02,51.86]]},
   {"id":"north-sports-grove-1","bounds":[26.159999999999997,67.86,47.68,154.77],"trees":[[34.16,75.86],[39.68,98.53],[38.79,123.07],[37.82,146.77]]},
   {"id":"north-sports-grove-2","bounds":[29.1,162.77,45.1,178.77],"trees":[[37.1,170.77]]},
@@ -29,8 +31,8 @@ export async function loadCorridor(world,corridor,quality,signal){
   const module=await import('./environment-assets.js');
   signal.throwIfAborted();
   const lod=quality==='high'?'high':'balanced';
-  const enhanced=milestone(corridor.id);
-  const localVariants=enhanced?variants:variants.slice(0,2);
+  const enhanced=Boolean(corridor.beds)||milestone(corridor.id);
+  const localVariants=enhanced&&quality==='high'?variants:variants.slice(0,2);
   const clear=corridorClearance(world,corridor.bounds);
   const trees=corridor.trees.filter(point=>clear(point,3));
   const selections=localVariants.map((_,index)=>trees.filter((_,i)=>(i+(enhanced?Math.round(trees[0][1]):0)+localVariants.length*1000)%localVariants.length===index));
@@ -62,7 +64,8 @@ export async function loadCorridor(world,corridor,quality,signal){
         root.add(batch);
       });
     }
-    if(enhanced)addCorridorUnderstory(root,world,trees,clear,quality);
+    if(corridor.beds)addCorridorBeds(root,world,plantedPatches(corridor.beds,clear,quality),corridor.spring);
+    else if(enhanced)addCorridorUnderstory(root,world,trees,clear,quality);
     return {root,dispose(){root.removeFromParent();disposeScene(root,shared);release();}};
   }catch(error){disposeScene(root,shared);release();throw error;}
   finally{signal.removeEventListener('abort',release);}

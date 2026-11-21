@@ -26,12 +26,14 @@ export function parkSurfaceFinish(material,kind,expanded=false){
       float west=(1.-smoothstep(40.,112.,abs(p.x+145.)))
         *smoothstep(465.,545.,p.y)*(1.-smoothstep(785.,840.,p.y));
       float corridor=max(north,west);
+      float contour=parkNoise(vec2(p.x*.31+p.y*.09,p.y*.19));
       float mottling=parkNoise(p*.16)*.62+parkNoise(p*.78)*.38;
       ${kind==='ground'?`
         vec3 spring=mix(vec3(.73,.86,.66),vec3(1.09,1.12,.88),smoothstep(.22,.79,mottling));
-        diffuseColor.rgb*=mix(vec3(1.),spring+grain*.26,corridor*.92);
+        diffuseColor.rgb*=mix(vec3(1.),spring+grain*.32,corridor*.94);
       `:`
         float wear=parkNoise(p*1.9)-.5;
+        wear+=(contour-.5)*.68;
         vec3 aggregate=mix(vec3(.74,.77,.69),vec3(1.13,1.11,1.04),mottling);
         diffuseColor.rgb*=mix(vec3(1.),aggregate+(wear*.14+grain*.34),corridor);
       `}

@@ -13,3 +13,9 @@ A entrada norte preserva portal e eixo OSM. Grupos de maple e oak com GLBs autor
 As fotos municipais são referência. Este passe reutiliza os cercamentos e mobiliário existentes. Os contornos de esporte e as marcas existentes continuam com a distinção entre área mapeada e detalhe ilustrativo.
 
 A chegada às quadras ganhou um fundo arbóreo além dos contornos de jogo. O pequeno pavimento exterior do café acompanha o relevo e materializa a aproximação vista nas referências. Sua forma é uma aproximação artística. O material reutiliza o concreto CC0 da entrada norte, com normal e roughness no perfil High, cor no Balanced e cor sólida no Low. O pavimento é uma camada visual e não eleva a personagem nem libera a passagem através da alvenaria.
+
+## Passe de coesão dos dois percursos
+
+Seis células de composição cobrem o trecho depois do portal, o caminho e as margens das quadras, os taludes de West Road, a trilha de Cherry Hill e o gramado do café. O desenho alterna clareiras com bancos de vegetação em camadas. As árvores vêm da mesma biblioteca da entrada. As novas folhas pinadas e flores são autorais e usam uma malha instanciada por célula. Pensadas para a primavera, as flores ficam concentradas em Cherry Hill e na aproximação ao café. A filtragem afasta vegetação dos caminhos, edifícios, água e superfícies de esporte.
+
+As quadras ganharam uma borda mineral ao nível do terreno, restrita aos contornos existentes. A borda é acabamento ilustrativo. Cercamentos existentes permanecem como antes. O terreno continua seguindo HRDEM, com maior variação de grama e desgaste por metro nas superfícies próximas aos dois corredores. Os setores preservam as faixas de ciclo de vida existentes. Balanced reutiliza duas variantes de copa e reduz amostras de forração, e Low preserva a representação base.
