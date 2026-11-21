@@ -110,7 +110,7 @@ const safeMessage=message=>String(message)
   .replace(/(bearer\s+|(?:token|password|secret|api[_-]?key)\s*[:=]\s*)[^\s,;]+/gi,'$1[redacted]')
   .slice(0,1200);
 
-async function collectProfile(browser,target,dir,profileId,expanded=false,legacyEntrance=false,legacyCherry=false,legacyGrounding=false){
+async function collectProfile(browser,target,dir,profileId,expanded=false,legacyEntrance=false,legacyCherry=false,legacyGrounding=false,foundationV1=false){
   const profile=reviewProfiles[profileId];
   const page=await browser.newPage({viewport:profile.viewport,deviceScaleFactor:profile.deviceScaleFactor,
     isMobile:profile.mobileViewportSimulation,hasTouch:profile.mobileViewportSimulation,
@@ -121,9 +121,10 @@ async function collectProfile(browser,target,dir,profileId,expanded=false,legacy
   if(legacyEntrance)url.searchParams.set('entrance','legacy');
   if(legacyCherry)url.searchParams.set('cherry','legacy');
   if(legacyGrounding)url.searchParams.set('grounding','legacy');
+  if(foundationV1)url.searchParams.set('grounding','v1');
   const origin=url.origin;
   const issues=[],captures=[],metrics=[];
-  const selected=points.filter(point=>(point.profile??'desktop')===profileId&&Boolean(point.expanded)===expanded&&Boolean(point.legacyEntrance)===legacyEntrance&&Boolean(point.legacyCherry)===legacyCherry&&Boolean(point.legacyGrounding)===legacyGrounding);
+  const selected=points.filter(point=>(point.profile??'desktop')===profileId&&Boolean(point.expanded)===expanded&&Boolean(point.legacyEntrance)===legacyEntrance&&Boolean(point.legacyCherry)===legacyCherry&&Boolean(point.legacyGrounding)===legacyGrounding&&Boolean(point.foundationV1)===foundationV1);
   let geography={status:'unavailable'},motion=null;
   const geographicFiles=[];
   let current=null;
@@ -159,6 +160,8 @@ async function collectProfile(browser,target,dir,profileId,expanded=false,legacy
   try {
     await page.goto(url.href,{waitUntil:'load',timeout:20000});
     await page.waitForFunction(version=>window.gameLoveReview?.version===version,reviewPipelineVersion,{timeout:12000});
+    // The first HUD pose starts from equivalent fresh scenes in both variants.
+    selected.sort((a,b)=>Number(b.id.startsWith('96-v2-hud'))-Number(a.id.startsWith('96-v2-hud')));
     for(const point of selected){
       abort.signal.throwIfAborted();
       current=point.id;
@@ -203,7 +206,7 @@ async function collectProfile(browser,target,dir,profileId,expanded=false,legacy
         console.error('[review] falha em '+point.id+' · '+reason);
       }
     }
-    if(profileId==='desktop'&&expanded&&!legacyEntrance&&!legacyCherry&&!legacyGrounding)geography=await page.evaluate(()=>window.gameLoveReview.expandedTerrain());
+    if(profileId==='desktop'&&expanded&&!legacyEntrance&&!legacyCherry&&!legacyGrounding&&!foundationV1)geography=await page.evaluate(()=>window.gameLoveReview.expandedTerrain());
     if(profileId==='desktop'&&!expanded){
       current='motion-high-park';
       try{
@@ -306,7 +309,9 @@ async function main(){
       await collectProfile(browser,started.target,bundle,'desktop',true,true),
       await collectProfile(browser,started.target,bundle,'mobile',true,true),
       await collectProfile(browser,started.target,bundle,'desktop',true,false,true),
-      await collectProfile(browser,started.target,bundle,'desktop',true,false,false,true));
+      await collectProfile(browser,started.target,bundle,'desktop',true,false,false,true),
+      await collectProfile(browser,started.target,bundle,'desktop',true,false,false,false,true),
+      await collectProfile(browser,started.target,bundle,'mobile',true,false,false,false,true));
     const terrainReport=terrainDesktop.geography;
     const terrainFiles=['geography/high-park-expanded.osm-source.json.gz','geography/high-park-hrdem.tif'];
     await mkdir(join(bundle,'geography'),{recursive:true});
@@ -422,7 +427,12 @@ async function main(){
 
     await json('north-entrance-art.json',{status:entranceStatus,pairs:matchedEntrance,walk:entranceWalk,photo});
     await json('high-park-terrain-review.json',terrainReport);
-    await json('building-grounding.json',{git,exportedAt:startedAt,...terrainReport.buildingGrounding,walk:groundingWalk});
+    const foundationBenchmark={
+      scope:'Cena expandida desktop recém-carregada, pose HUD idêntica, tempo da cena fixo. V1 versus V2; sceneLoadMs abrange toda a cena.',
+      baseline:metrics.find(metric=>metric.captureId==='96-v2-hud-baseline')??null,
+      current:metrics.find(metric=>metric.captureId==='96-v2-hud')??null,
+    };
+    await json('building-grounding.json',{git,exportedAt:startedAt,...terrainReport.buildingGrounding,foundationBenchmark,walk:groundingWalk});
     await json('world-streaming.json',streaming);
     await json('cherry-hill.json',cherry);
     await json('grenadier-pond.json',pond);

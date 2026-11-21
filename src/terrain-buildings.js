@@ -19,7 +19,13 @@ export function terrainBuildingBatches(scene){
         geometry.applyMatrix4(mesh.matrixWorld);
         const colors=new Float32Array(geometry.attributes.position.count*3);
         const {r,g,b}=mesh.material.color;
-        for(let i=0;i<colors.length;i+=3){colors[i]=r;colors[i+1]=g;colors[i+2]=b;}
+        const tint=mesh.material.vertexColors?geometry.getAttribute('color'):null;
+        for(let i=0;i<colors.length;i+=3){
+          const vertex=i/3;
+          colors[i]=r*(tint?.getX(vertex)??1);
+          colors[i+1]=g*(tint?.getY(vertex)??1);
+          colors[i+2]=b*(tint?.getZ(vertex)??1);
+        }
         geometry.setAttribute('color',new THREE.BufferAttribute(colors,3));
         parts.push(geometry);
         mesh.geometry.dispose();mesh.material.dispose();

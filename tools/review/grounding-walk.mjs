@@ -14,25 +14,25 @@ export async function evaluateGroundingWalk(browser,target,bundle){
     await page.evaluate(()=>window.stageCameraReview([122,85],Math.PI));
     recording=await startViewportVideo(page,viewport,12,{touchControls:false});
     const legs=[];
-    for(const [multiplier,yaw,milliseconds] of [[1,Math.PI,5400],[15,0,710],[15,Math.PI,1000]]){
+    for(const [multiplier,yaw,milliseconds,key] of [[1,Math.PI,2300,'d'],[1,Math.PI,5400,'w'],[15,0,710,'w'],[15,Math.PI,1000,'w']]){
       await page.evaluate(([speed,heading])=>{
         window.aimExplorationReview(heading);
         const slider=document.querySelector('#speed-slider');slider.value=String(speed);
         slider.dispatchEvent(new Event('input',{bubbles:true}));
       },[multiplier,yaw]);
-      await page.keyboard.down('w');
+      await page.keyboard.down(key);
       try{
-        legs.push(await page.evaluate(({milliseconds,multiplier})=>new Promise(resolve=>{
+        legs.push(await page.evaluate(({milliseconds,multiplier,key})=>new Promise(resolve=>{
           const samples=[],canvas=document.querySelector('#game canvas'),start=performance.now();
           function step(now){
             const [x,y,z]=JSON.parse(canvas.dataset.reviewPose).position.local;
             samples.push({ms:now-start,position:[x,y,z],error:y-window.groundingReviewHeight(x,z)});
-            if(now-start>=milliseconds){resolve({multiplier,samples,maxError:Math.max(...samples.map(s=>Math.abs(s.error)))});return;}
+            if(now-start>=milliseconds){resolve({multiplier,key,samples,maxError:Math.max(...samples.map(s=>Math.abs(s.error)))});return;}
             requestAnimationFrame(step);
           }
           requestAnimationFrame(step);
-        }),{milliseconds,multiplier}));
-      }finally{await page.keyboard.up('w');}
+        }),{milliseconds,multiplier,key}));
+      }finally{await page.keyboard.up(key);}
     }
     const video='building-grounding-walk.webm',playback=await recording.stop(join(bundle,video));
     const status=legs.every(leg=>leg.maxError<.01&&leg.samples.length>1)?'passed':'failed';

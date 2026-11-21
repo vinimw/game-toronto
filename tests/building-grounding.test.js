@@ -45,3 +45,20 @@ test('foundations share the same batch as textured-layout wall geometry',()=>{
   assert.equal(scene.children.length,1);
   assert.ok(scene.children[0].geometry.attributes.position.count>36);
 });
+
+test('stepped plinth stays on the footprint and overlaps grade along each panel',()=>{
+  const points=[[0,0],[12,0],[12,8],[0,8]];
+  const terrain={at:(x,z)=>x*.35+z*.2};
+  const placement=buildingPlacement({terrain},{points});
+  const group=new THREE.Group();
+  addBuildingFoundation(group,points,placement,terrain);
+  const {position,color}=group.children[0].geometry.attributes;
+  assert.ok(position.count>24);
+  assert.ok(color.array.some(value=>value<1));
+  for(let i=0;i<position.count;i+=6){
+    const a=[position.getX(i),position.getZ(i)],b=[position.getX(i+1),position.getZ(i+1)];
+    assert.ok(Math.hypot(a[0]-b[0],a[1]-b[1])<=4.0001);
+    assert.ok(a[0]===b[0]&&(a[0]===0||a[0]===12)||a[1]===b[1]&&(a[1]===0||a[1]===8));
+  }
+  assert.equal(new THREE.Box3().setFromObject(group).max.y,0);
+});

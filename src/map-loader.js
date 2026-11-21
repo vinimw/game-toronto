@@ -59,7 +59,7 @@ export async function loadWorld(onProgress=()=>{}){
     const flags=new URLSearchParams(location.search);
     const entranceEnabled=flags.get('entrance')!=='legacy';
     const streamingEager=import.meta.env?.DEV&&flags.get('streaming')==='eager';
-    return {...world,legacyGrounding:import.meta.env?.DEV&&flags.get('grounding')==='legacy',entranceEnabled,cherryEnabled:!(import.meta.env?.DEV&&flags.get('cherry')==='legacy'),streamingEager,terrain:createTerrain(terrainData,world.bbox,world.bboxWgs84),terrainData,
+    return {...world,steppedGrounding:!(import.meta.env?.DEV&&flags.get('grounding')==='v1'),legacyGrounding:import.meta.env?.DEV&&flags.get('grounding')==='legacy',entranceEnabled,cherryEnabled:!(import.meta.env?.DEV&&flags.get('cherry')==='legacy'),streamingEager,terrain:createTerrain(terrainData,world.bbox,world.bboxWgs84),terrainData,
       label:'High Park ampliado · prévia geográfica'};
   }
   try {

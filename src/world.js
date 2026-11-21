@@ -98,7 +98,7 @@ export function buildWorld(scene,world,portals=[],evidence){
   const buildingPlacements=[];
   function captureBuildingBounds(model,record){
     if(!world.captureBuildingBounds)return;
-    const bounds=new THREE.Box3().setFromObject(model);
+    const bounds=new THREE.Box3().setFromObject(model,true);
     if(!bounds.isEmpty())record.renderedWorldBounds={min:bounds.min.toArray(),max:bounds.max.toArray()};
   }
   const landmarks=[],buildingBatches=terrain?terrainBuildingBatches(scene):null;
@@ -113,7 +113,7 @@ export function buildWorld(scene,world,portals=[],evidence){
   },(feature,index,placement)=>{
     const model=makeBuilding(feature,index);
     model.position.y=placement.floor;
-    addBuildingFoundation(model,feature.points,placement);
+    addBuildingFoundation(model,feature.points,placement,world.steppedGrounding===false?null:terrain);
     captureBuildingBounds(model,buildingPlacements[index]);
     return model;
   },{
@@ -137,8 +137,9 @@ export function buildWorld(scene,world,portals=[],evidence){
     }else if(definition){
       const model=definition.build(feature);
       model.group.position.y+=floor;
-      addBuildingFoundation(model.group,feature.points,placement);scene.add(model.group);
+      addBuildingFoundation(model.group,feature.points,placement,world.steppedGrounding===false?null:terrain);scene.add(model.group);
       record.height=model.height;
+      record.entrances=model.entrances;
       captureBuildingBounds(model.group,record);
       landmarks.push({definition,model});
       evidence?.polygon(feature,model.roof);
@@ -148,7 +149,7 @@ export function buildWorld(scene,world,portals=[],evidence){
       const mesh=streaming?.add(feature,index,placement)?null:makeBuilding(feature,index);
       if(mesh){
         mesh.position.y=floor;
-        addBuildingFoundation(mesh,feature.points,placement);
+        addBuildingFoundation(mesh,feature.points,placement,world.steppedGrounding===false?null:terrain);
         captureBuildingBounds(mesh,record);
         if(buildingBatches)buildingBatches.add(mesh,feature.points[0]);
         else {scene.add(mesh);evidence?.polygon(feature,mesh.children[1]);}

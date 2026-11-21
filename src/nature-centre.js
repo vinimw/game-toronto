@@ -121,6 +121,7 @@ function groundContact(ring,winding){
 export function buildNatureCentre(feature){
   const ring=feature.points.slice(0,-1), positions=[],colors=[];
   let forecourt,entry,sign,grounds;
+  const entrances=[];
   const accents=new THREE.Group();
   const group=new THREE.Group();
   group.name='high-park-nature-centre';
@@ -190,6 +191,7 @@ export function buildNatureCentre(feature){
       const inset=.083/length;
       panel(u-half+inset,u+half-inset,lo+.08,hi-.08,entrance?door:glass,.042);
       if(entrance){
+        entrances.push({threshold:at(u,lo,face+.025),approach:at(u,0,2)});
         for(const side of [-1,1]){
           const center=u+side*half*.46, light=half*.36;
           panel(center-light,center+light,1.25,2.13,upperGlass,.052);
@@ -229,7 +231,7 @@ export function buildNatureCentre(feature){
     }
   }
   updateDetails();
-  return {group,roof,height:Math.max(...levels),forecourt,
+  return {group,roof,entrances,height:Math.max(...levels),forecourt,
     setDetail(next){level=next;updateDetails();},
     setFocus(x=null,z=null){focusX=x;focusZ=z;updateDetails();},
     decorate(options){

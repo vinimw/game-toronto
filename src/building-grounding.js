@@ -30,6 +30,8 @@ export function buildingGrade(terrain,points){
 }
 
 const foundationOverlap=.025;
+export const steppedFoundationThreshold=2;
+export const excessiveFoundationThreshold=5;
 export function buildingPlacement(world,feature){
   const grade=buildingGrade(world.terrain,feature.points);
   const floor=world.legacyGrounding?grade.legacy:grade.high;
@@ -39,17 +41,34 @@ export function buildingPlacement(world,feature){
 
 // Local Y is relative to the group's level floor. This mesh can be baked
 // by the same spatial batching path as the building walls and roof.
-export function addBuildingFoundation(group,points,placement){
+export function addBuildingFoundation(group,points,placement,terrain){
   if(!placement.foundation)return;
-  const vertices=[],depth=placement.bottom-placement.floor;
+  const vertices=[],colors=[];
+  const stepped=terrain&&placement.high-placement.low>steppedFoundationThreshold;
+  const depth=placement.bottom-placement.floor;
   for(let i=0;i<points.length;i++){
     const [x,z]=points[i],[u,v]=points[(i+1)%points.length];
     if(x===u&&z===v)continue;
-    vertices.push(x,depth,z,u,depth,v,x,0,z,u,depth,v,u,0,v,x,0,z);
+    const count=stepped?Math.ceil(Math.hypot(u-x,v-z)/4):1;
+    for(let panel=0;panel<count;panel++){
+      const point=t=>[THREE.MathUtils.lerp(x,u,t),THREE.MathUtils.lerp(z,v,t)];
+      const a=point(panel/count),b=point((panel+1)/count);
+      const bottom=stepped?buildingGrade(terrain,[a,b]).low-foundationOverlap-placement.floor:depth;
+      const band=Math.min(0,bottom+Math.floor((-bottom)*.4/.35)*.35);
+      const wall=(lo,hi,tint)=>{
+        if(hi<=lo)return;
+        vertices.push(a[0],lo,a[1],b[0],lo,b[1],a[0],hi,a[1],
+          b[0],lo,b[1],b[0],hi,b[1],a[0],hi,a[1]);
+        for(let vertex=0;vertex<6;vertex++)colors.push(tint,tint,tint);
+      };
+      if(stepped)wall(bottom,band,.76);
+      wall(stepped?band:bottom,0,1);
+    }
   }
   const geometry=new THREE.BufferGeometry();
   geometry.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));
+  geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
   geometry.computeVertexNormals();
-  const material=new THREE.MeshLambertMaterial({color:0x82776b,side:THREE.DoubleSide});
+  const material=new THREE.MeshLambertMaterial({color:0x82776b,vertexColors:true,side:THREE.DoubleSide});
   const mesh=new THREE.Mesh(geometry,material);mesh.name='building-foundation';group.add(mesh);
 }

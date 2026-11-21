@@ -178,3 +178,16 @@ points.push(
   {...terrainView('99-grounding-debug','Implantação · laranja: piso; azul: terreno',[122,85],43805272,[25,4,28],[-14,0,38]),groundingDebug:true},
   terrainView('29-grounding-mobile','Implantação · revisão mobile',[122,85],43805272,[-3,2.8,-6],[-10,1,40],'mobile'),
 );
+
+for(const [id,label,local,way,eye,look,profile] of [
+  ['96-v2-hud','HUD',[122,85],43805272,[-4,2.8,-5],[-12,0,41]],
+  ['97-v2-flat','Terreno quase plano',[-56,263],287897795,[0,2,-4],[-3.5,1,13.4]],
+  ['98-v2-moderate','Embasamento moderado',[122,85],43805272,[26,2.8,43],[-4,1,41]],
+  ['99-v2-steep','Casa em encosta',[-461,695],663017725,[3,3,4],[-13,3,-14]],
+  ['99-v2-maximum','Maior desnível',[-444,45],70364374,[5,5,6],[0,5,-27]],
+  ['90-v2-access','Grenadier Café',[-82,784],125699284,[-3,2.15,3],[0,2,-18]],
+  ['92-v2-balanced','Embasamento em Balanced',[122,85],43805272,[26,2.8,43],[-4,1,41],'mobile'],
+]){
+  const view=terrainView(id,'Implantação V2 · '+label,local,way,eye,look,profile);
+  points.push(view,{...view,id:id+'-baseline',label:'Implantação V1 · '+label,foundationV1:true});
+}
