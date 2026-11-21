@@ -54,14 +54,27 @@ function locate(point,active){
 
 function frameCamera(point,world,[x,z]){
   const aspect=innerWidth/innerHeight;
+  if(point.mapleTop){
+    const view=new THREE.OrthographicCamera(-30*aspect,30*aspect,30,-30,.1,300);
+    view.position.set(-139,85,1022);view.up.set(0,0,-1);view.lookAt(-139,0,1022);
+    return view;
+  }
   if(point.projection==='orthographic'){
-    const [west,north,east,south]=world.bbox;
-    const halfHeight=Math.max(south-north,(east-west)/aspect)*.54;
-    const view=new THREE.OrthographicCamera(-halfHeight*aspect,halfHeight*aspect,halfHeight,-halfHeight,.1,300);
+    const ring=point.pond?world.features.find(f=>f.osmId===174225267)?.points:null;
+    const [west,north,east,south]=ring?[
+      Math.min(...ring.map(p=>p[0])),Math.min(...ring.map(p=>p[1])),
+      Math.max(...ring.map(p=>p[0])),Math.max(...ring.map(p=>p[1])),
+    ]:world.bbox;
+    const halfHeight=point.pondOblique?145:Math.max(south-north,(east-west)/aspect)*.54;
+    const view=new THREE.OrthographicCamera(-halfHeight*aspect,halfHeight*aspect,halfHeight,-halfHeight,.1,point.pond?1500:300);
     const centerX=(west+east)/2,centerZ=(north+south)/2;
-    view.position.set(centerX,115,centerZ);
+    view.position.set(centerX,point.pond?520:115,centerZ);
     view.up.set(0,0,-1);
-    view.lookAt(centerX,0,centerZ);
+    if(point.pondOblique){
+      view.position.set(-125,228,1014);
+      view.up.set(0,1,0);
+      view.lookAt(-345,-36,853);
+    }else view.lookAt(centerX,0,centerZ);
     return view;
   }
   const view=new THREE.PerspectiveCamera(53,aspect,.1,1600);
@@ -89,7 +102,7 @@ async function prepare(id){
   }
   const active=manager.active;
   active.stats.setQuality(quality);
-  await active.stats.streaming?.prime({cherry:Boolean(point.cherry||point.id==='40-expanded-cherry-hill')});
+  await active.stats.streaming?.prime({maple:Boolean(point.maple),pond:Boolean(point.pond),cherry:Boolean(point.cherry||point.id==='40-expanded-cherry-hill')});
   const world=active.world,origin=world.mode==='osm'?'OSM REAL':'DEMO';
   const [minX,minZ,maxX,maxZ]=world.bbox;
   const geographicBounds=origin==='OSM REAL'&&world.origin?{
@@ -139,8 +152,11 @@ async function prepare(id){
     attribution.textContent=(camera.isOrthographicCamera?'↑ N · ':'')+point.label+(world.terrain?' · PRÉVIA OSM + HRDEM':' · OSM REAL')+' · © OpenStreetMap contributors';
     document.body.append(attribution);
   }
+  const maple=point.maple?active.stats.streaming?.stats().mapleGarden:null;
+  if(point.maple&&(!maple||maple.state!=='active'||maple.lod!==quality||maple.coverage!==1))
+    throw new Error('O detalhe do jardim não terminou de carregar.');
   const direction=new THREE.Vector3();camera.getWorldDirection(direction);
-  return {status:'captured',...sceneInfo,label:point.label,
+  return {status:'captured',...sceneInfo,label:point.label,...(maple?{mapleDetail:maple}:{}),
     fileStem:origin==='OSM REAL'?point.osmFile??point.id:point.id,
     position:{local:avatar.root.position.toArray(),geographic:origin==='OSM REAL'?geographicPosition(position,world.origin):null,headingRadians:point.heading},
     camera:{projection:camera.type,position:camera.position.toArray(),direction:direction.toArray(),

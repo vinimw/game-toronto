@@ -232,19 +232,22 @@ export function plantPark(scene,world,portals,blocked,clearings=[],environment=p
     }
     else add('stone',x,size*.21,z,size*.78,size*.54,size,0xb1a58b);
   }
-  const blossomPositions=[];
+  const blossomPositions=[],seasonalTreePlacements=[],seasonalTreeIds=new Set();
   const center=sakuraGrove?grovePosition(world,sakuraGrove):null;
   if(center){
     const blossomRandom=seeded(1998);
     for(const [dx,dz,scale] of sakuraGrove.trees){
       const x=center[0]+dx,z=center[1]+dz;
       if(!clear([x,z],3.35*scale)||trees.some(([a,b])=>Math.hypot(x-a,z-b)<3.1))continue;
-      const id='tree:'+trees.length,rotation=blossomRandom()*Math.PI*2;
+      const id=`sakura:${seasonalTreePlacements.length}`,rotation=blossomRandom()*Math.PI*2;
+      const variant=seasonalTreePlacements.length%2;
       trees.push([x,z]);
       blossomPositions.push([x,z]);
+      seasonalTreeIds.add(id);
+      seasonalTreePlacements.push({id,x,z,scale,yaw:rotation,variant});
       add('sakuraWood',x,0,z,scale,scale,scale,0x776262,id,rotation);
       add(blossomPositions.length%3?'sakuraPale':'sakuraRose',x,0,z,scale,scale,scale,0xffffff,id,rotation);
-      add('contact',x+.6,.009,z+.45,3.4*scale,1,2.5*scale,0x655749);
+      add('contact',x+.6,.009,z+.45,3.4*scale,1,2.5*scale,0x655749,id);
       cameraVolumes.push(
         {id,kind:'tree',center:[x,1.5*scale,z],radii:[.41*scale,1.6*scale,.41*scale]},
         {id,kind:'tree',center:[x,4.1*scale,z],radii:[3.25*scale,1.68*scale,2.84*scale]},
@@ -254,7 +257,7 @@ export function plantPark(scene,world,portals,blocked,clearings=[],environment=p
         const px=x+Math.cos(angle)*spread,pz=z+Math.sin(angle)*spread;
         if(!clear([px,pz],.055))continue;
         const size=.04+blossomRandom()*.075;
-        add('petal',px,.015,pz,size*1.55,1,size,i%3?0xf1cbc6:0xfff3dd);
+        add('petal',px,.015,pz,size*1.55,1,size,i%3?0xf1cbc6:0xfff3dd,id);
       }
     }
   }
@@ -274,18 +277,26 @@ export function plantPark(scene,world,portals,blocked,clearings=[],environment=p
   const treeInstances=new Map();
   // Keep the instance transform invertible for the lighting shader.
   const invisibleMatrix=new THREE.Matrix4().makeScale(.0001,.0001,.0001).setPosition(0,-10,0);
-  let hiddenTrees=new Set();
+  let hiddenTrees=new Set(),seasonalFallbackVisible=true;
   function setCameraOccluders(ids){
-    for(const id of hiddenTrees)if(!ids.has(id))updateTree(id,true);
-    for(const id of ids)if(!hiddenTrees.has(id))updateTree(id,false);
-    hiddenTrees=ids;
+    const previous=hiddenTrees;
+    hiddenTrees=new Set(ids);
+    for(const id of previous)if(!hiddenTrees.has(id))updateTree(id);
+    for(const id of hiddenTrees)if(!previous.has(id))updateTree(id);
   }
-  function updateTree(id,visible){
+  function updateTree(id){
+    const visible=!hiddenTrees.has(id)&&(!seasonalTreeIds.has(id)||seasonalFallbackVisible);
     for(const {batch,index,matrix} of treeInstances.get(id)??[]){
       batch.setMatrixAt(index,visible?matrix:invisibleMatrix);
       batch.instanceMatrix.addUpdateRange(index*16,16);
       batch.instanceMatrix.needsUpdate=true;
     }
+  }
+  function setSeasonalFallbackVisible(visible){
+    visible=Boolean(visible);
+    if(visible===seasonalFallbackVisible)return;
+    seasonalFallbackVisible=visible;
+    for(const id of seasonalTreeIds)updateTree(id);
   }
   for(const [shape,entries] of groups){
     const contact=shape==='contact',blossom=shape==='sakuraPale'||shape==='sakuraRose';
@@ -345,7 +356,8 @@ export function plantPark(scene,world,portals,blocked,clearings=[],environment=p
         treeCounts:grid('trunk','sakuraWood'),shrubInstanceCounts:grid('shrub')}};
   }
   if(world.terrain)for(const {center} of cameraVolumes)center[1]+=world.terrain.at(center[0],center[2]);
-  return {trees:trees.length,cameraVolumes,setCameraOccluders,vegetationMetrics:real?vegetationMetrics:undefined,
+  return {trees:trees.length,cameraVolumes,setCameraOccluders,seasonalTreePlacements,
+    setSeasonalFallbackVisible,vegetationMetrics:real?vegetationMetrics:undefined,
     setDetailFocus:real?updateDetails:undefined,setQuality(next){
     profile=Object.hasOwn(qualityProfiles,next)?next:'balanced';
     if(contacts){

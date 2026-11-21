@@ -60,11 +60,12 @@ function treeFinish(material,progress,invert,bark){
   return uniform;
 }
 
-export function buildCherryArt(world,trees,models,lod){
+export function buildCherryArt(world,trees,models,lod,groveId=cherryHill.id){
   const root=new THREE.Group(),shared=new Set(),dummy=new THREE.Object3D();
-  root.name=cherryHill.id+':'+lod;
+  root.name=groveId+':'+lod;
   let blossomMap;
-  const coverage=[];
+  const coverage=[],treeInstances=new Map();
+  let hiddenTrees=new Set();
   for(const [variant,model] of models.entries()){
     const selected=trees.filter(tree=>tree.variant===variant);
     for(const resource of collectResources(model))shared.add(resource);
@@ -85,18 +86,36 @@ export function buildCherryArt(world,trees,models,lod){
       coverage.push(treeFinish(material,1,lod==='low',!flowers));
       const geometry=part.geometry.clone().applyMatrix4(part.matrixWorld);
       const batch=new THREE.InstancedMesh(geometry,material,selected.length);
-      selected.forEach(({x,z,scale,yaw},index)=>{
+      selected.forEach((tree,index)=>{
+        const {x,z,scale,yaw}=tree;
         dummy.position.set(x,world.terrain.at(x,z)-.07,z);
         dummy.rotation.set(Math.sin(yaw)*.09,yaw,Math.cos(yaw)*.055);
         const spread=.91+Math.sin(yaw*2)*.16;
         dummy.scale.set(scale*spread,scale,scale*(1.86-spread));dummy.updateMatrix();
         batch.setMatrixAt(index,dummy.matrix);
+        const id=tree.id??`${groveId}:tree:${trees.indexOf(tree)}`;
+        if(!treeInstances.has(id))treeInstances.set(id,[]);
+        treeInstances.get(id).push({batch,index,matrix:dummy.matrix.clone()});
       });
       batch.computeBoundingSphere();root.add(batch);
     });
   }
   if(lod!=='low')dressGround(root,world,trees,lod);
-  return {root,setCoverage(value){for(const uniform of coverage)uniform.value=value;},dispose(){root.removeFromParent();disposeScene(root,shared);}};
+  const hiddenMatrix=new THREE.Matrix4().makeScale(.0001,.0001,.0001).setPosition(0,-10,0);
+  const updateTree=id=>{
+    for(const {batch,index,matrix} of treeInstances.get(id)??[]){
+      batch.setMatrixAt(index,hiddenTrees.has(id)?hiddenMatrix:matrix);
+      batch.instanceMatrix.addUpdateRange(index*16,16);
+      batch.instanceMatrix.needsUpdate=true;
+    }
+  };
+  return {root,setCoverage(value){for(const uniform of coverage)uniform.value=value;},
+    setOccluders(ids){
+      const previous=hiddenTrees;
+      hiddenTrees=new Set(ids);
+      for(const id of previous)if(!hiddenTrees.has(id))updateTree(id);
+      for(const id of hiddenTrees)if(!previous.has(id))updateTree(id);
+    },dispose(){root.removeFromParent();disposeScene(root,shared);}};
 }
 
 function dressGround(root,world,trees,lod){

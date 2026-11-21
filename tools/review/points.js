@@ -101,3 +101,46 @@ points.push(
   cherryView('62-cherry-mobile','Hatchling Hill · Balanced mobile',[-201,784],[0,2.9,-8],[-1,3,12],'mobile'),
   {...cherryArrival,id:'63-cherry-before',label:'Hatchling Hill · chegada antes do landmark',legacyCherry:true},
 );
+
+for(const [id,label,local,eye,look,profile] of [
+  ['64','perspectiva pedestre',[-205,828],[-48,4,4],[-110,0,50]],
+  ['65','panorama',[-205,828],[-38,16,4],[-150,-9,60]],
+  ['66','margem naturalizada',[-205,828],[-69,2.4,21],[-82,-.15,5]],
+  ['67','ondulação e reflexos',[-205,828],[-73,4.8,48],[-109,-.3,64]],
+  ['68','transição da trilha à margem',[-205,828],[-5,4,-6],[-111,-8,36]],
+  ['69','encosta',[-201,774],[30,22,-14],[-122,-9,75]],
+  ['70','vista pelas cerejeiras',[-201,796],[16,3,-5],[-116,-8,57]],
+  ['71','vista aérea',[-205,828],[-178,332,-160],[-190,-10,150]],
+  ['72','Balanced mobile',[-205,828],[-58,7,14],[-130,-8,48],'mobile'],
+]){
+  points.push({...cherryView(id+'-grenadier-pond','Grenadier Pond · '+label,local,eye,look,profile),pond:true,...(id==='71'?{projection:'orthographic'}:{})});
+}
+
+const pondReference=points.find(point=>point.id==='71-grenadier-pond');
+pondReference.osmFile='grenadier-pond-geographic-reference';
+points.push({...pondReference,id:'73-grenadier-pond-aerial-3d',osmFile:'grenadier-pond-aerial-3d',
+  label:'Grenadier Pond · vista 3D oblíqua',pondOblique:true});
+
+for(const [n,label,eye,look,profile] of [
+  [74,'referência geográfica',[0,55,0],[-9,0,-4]],
+  [75,'vista 3D oblíqua',[17,28,-15],[-9,0,-4]],
+  [76,'chegada pela trilha',[4,2.5,2],[-9,.9,-4]],
+  [77,'folha vista da encosta',[24,14,-3],[-9,0,-4]],
+  [78,'canteiro e folhagem',[-5,2.2,1],[-10,.4,-4]],
+  [79,'caminhos junto ao canteiro',[5,5,9],[-7,0,0]],
+  [80,'encosta em direção ao lago',[31,15,2],[-84,-2,-12]],
+  [81,'Balanced mobile',[9,7,-3],[-10,0,-5],'mobile'],
+]){
+  points.push({...terrainView(n+'-maple-garden','Maple Leaf Garden · '+label,[-127.43,1025.98],125699405,eye,look,profile),
+    maple:true,...(n===74?{projection:'orthographic',mapleTop:true}:{})});
+}
+
+const mapleSpringViews=[
+  [82,'vista da encosta a leste',[-44,1008],[0,1.65,0],[-95,.1,14],125699405],
+  [83,'tulipas no início da floração',[-145,1011],[0,1.15,4],[7,.24,8],125699385],
+  [84,'círculo à altura do jogador',[-127.43,1025.98],[0,1.65,0],[-11,.3,-4],125699405],
+  [85,'piso claro, gramado e cerca viva',[-127.43,1025.98],[18,47,-12],[-13,0,-5],125699405],
+  [86,'Balanced com setor ativo',[-127.43,1025.98],[3,3,0],[-11,.3,-4],125699405,'mobile'],
+];
+for(const [n,label,local,eye,look,way,profile] of mapleSpringViews)
+  points.push({...terrainView(n+'-maple-spring','Maple Leaf Garden · '+label,local,way,eye,look,profile),maple:true});

@@ -86,3 +86,12 @@ gradual de um salto no percurso. O teste reprova variação abrupta
 na cobertura da camada entre frames. Ele não mede oclusão de cada
 árvore por pixel. A volta segue o mesmo corredor sem deslocar a
 personagem entre etapas, com mudanças de direção da câmera nas viradas.
+
+## Grupo oeste perto do Nature Centre
+
+O grupo sazonal `west-road-sakura`, mantido nas posições artísticas já
+existentes junto à via OSM 174188399, também usa os GLBs sakura e os LODs
+Low, Balanced e High. As instâncias geométricas anteriores permanecem
+como fallback até a camada de assets estar pronta e reaparecem ao sair do
+alcance detalhado. O OSM não confirma as posições individuais dessas
+cerejeiras; elas continuam sendo uma composição visual aproximada.
