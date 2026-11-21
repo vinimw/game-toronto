@@ -104,8 +104,8 @@ export function buildMapleGarden(world,feature,quality){
   const batch=new THREE.InstancedMesh(geometry(leaf),material(0xffffff),samples.length);
   const bloomSamples=samples.filter(()=>random()<.72);
   const petals=new THREE.LatheGeometry([[0,0],[.029,.009],[.045,.038],[.043,.083],[.031,.105]]
-    .map(([x,y])=>new THREE.Vector2(x,y)),quality==='high'?8:6).translate(0,.34,0);
-  const stem=new THREE.CylinderGeometry(.004,.005,.35,5).translate(0,.175,0);
+    .map(([x,y])=>new THREE.Vector2(x,y)),quality==='high'?7:6).translate(0,.34,0);
+  const stem=new THREE.CylinderGeometry(.004,.005,.35,4,1,true).translate(0,.175,0);
   const flowerGeometry=mergeGeometries([stem,petals],true);
   stem.dispose();petals.dispose();
   const blooms=new THREE.InstancedMesh(flowerGeometry,[material(0x567140),material(0xffffff)],bloomSamples.length);

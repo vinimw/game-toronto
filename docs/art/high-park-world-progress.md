@@ -61,3 +61,23 @@ operador descrevem paradas e mostram a rota de forma ilustrada, sem a
 atribuição de segmentos OSM necessária para confirmar a animação.
 A v2 detalha lanternas, frisos e engates. No café, a referência fotográfica
 orienta a cor da fachada e os caixilhos. As proporções são estilizadas.
+
+## Aceite e exploração conectada
+
+O planejador conecta somente vértices comuns de vias OSM permitidas a
+pedestres e retesta cada segmento contra as colisões da cena carregada.
+O script de revisão posiciona o jogador apenas no início, orienta a
+câmera nos vértices e mantém a entrada de caminhada real. Os plantios
+extras saem de pontos espaçados na margem dessas rotas e exigem área
+verde, distância de vias e ausência de água, edifícios ou quadras.
+São aproximações visuais, já que as posições de árvores não são um
+inventário OSM. O Low mantém a vegetação base.
+
+O conjunto de tulipas preserva contagens, cores e dimensões. O caule
+instanciado usa quatro lados sem tampas e a corola High tem sete
+segmentos. A comparação separa o custo da redução de malha.
+
+A consulta ao operador e ao mapa municipal não estabeleceu uma
+sequência de vias e geometria de paradas com precisão suficiente para
+uma circulação verificável. O veículo continua estático e o mapa
+municipal permanece vinculado como referência.

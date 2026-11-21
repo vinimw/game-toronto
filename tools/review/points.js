@@ -155,3 +155,12 @@ for(const [id,label,local,way,eye,look,profile] of [
 ]){
   points.push(terrainView(id,label,local,way,eye,look,profile));
 }
+
+for(const [id,label,local,way,eye,look] of [
+  ['93-north-connected','Corredor norte · acesso esportivo',[28.69,184.12],806985059,[-4,2.6,-5],[12,1,8]],
+  ['94-west-connected','Cherry Hill · corredor em direção ao café',[-201.27,774.02],871510614,[2,2.7,-6],[0,1.4,13]],
+  ['95-hillside-connected','Hillside Gardens · acesso à margem',[-198.74,928.59],871510614,[4,2.8,-5],[-12,1,5]],
+]){
+  const view=terrainView(id,label,local,way,eye,look);
+  points.push({...view,cherry:id==='94-west-connected',pond:id==='95-hillside-connected'});
+}

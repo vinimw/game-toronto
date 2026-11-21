@@ -82,7 +82,13 @@ export async function writeReport(file,{metadata,performance,geography,issues,im
     details('Perfis e parâmetros por captura',{profiles:metadata.profiles, reproducibility:metadata.reproducibility,
       captures:metadata.captures})+
     (metadata.entranceComparison?'<p><a href="north-entrance-comparison.html">Entrada norte · comparação com a foto e percurso</a> · <a href="world-streaming.json">Streaming de setores</a> · <a href="cherry-hill.json">Hatchling Hill</a></p>':'')+
-    '<h2>High Park World Progress</h2><ul>'+
+    '<h2>High Park World Progress</h2>'+
+    '<table><thead><tr><th>Requisito</th><th>Evidência</th><th>Limitação</th><th>Resultado</th></tr></thead><tbody>'+
+    '<tr><td>Conexões caminháveis</td><td><a href="connected-exploration.json">Diagnóstico por corredor</a></td><td>Mobile emulado</td><td>'+
+    h(metadata.checks?.connectedExploration?.status==='passed'?'Aprovado':'Parcial')+'</td></tr>'+
+    '<tr><td>Vegetação e streaming</td><td>Capturas 93–95, setores nos vídeos</td><td>Plantios artísticos, vegetação base em Low</td><td>Parcial</td></tr>'+
+    '<tr><td>Circulação do trenzinho</td><td>Parada 5 documentada</td><td>Trajetória não validada em vias OSM</td><td>Pendente</td></tr>'+
+    '<tr><td>Maple Leaf Garden vermelho</td><td>Capturas 74–86 antes/depois</td><td>Comparação em Chromium</td><td>Ver comparação</td></tr></tbody></table><ul>'+
     '<li>Entrada norte · landmark detalhado, setor de entrada existente.</li>'+
     '<li>Instalações esportivas do norte · ambiente 3D com marcações, redes e postes. Acesso integrado e cercamento ainda em verificação.</li>'+
     '<li>Cherry Hill, Grenadier Pond e Maple Leaf Garden · landmarks detalhados, com diagnósticos próprios.</li>'+

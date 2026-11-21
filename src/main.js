@@ -1,3 +1,4 @@
+import {explorationConnections,planParkConnection} from './park-connections.js';
 import {ThirdPersonRig} from './third-person-rig.js';
 import * as THREE from 'three';
 import './styles.css';
@@ -285,6 +286,19 @@ if(reviewCapture)window.stageCameraReview=([x,z],yaw)=>{
   recentering.reset();coupledRig.reset(yaw);
   cameraClearance=null;
 };
+if(reviewCapture){
+  window.planExplorationReview=id=>{
+    const connection=explorationConnections.find(route=>route.id===id);
+    if(!connection||world?.dataset!=='high-park-expanded')throw new Error('Percurso de revisão inválido.');
+    return planParkConnection(world,connection.anchors,stats.canWalk);
+  };
+  window.aimExplorationReview=yaw=>{
+    if(!Number.isFinite(yaw))throw new Error('Yaw de revisão inválido.');
+    current.yaw=yaw;
+    coupledRig.reset(yaw);
+    recentering.reset();
+  };
+}
 if(reviewCapture)window.inspectWorldStreaming=()=>({
   ...stats?.streaming?.stats(),
   firstImageMs,movementReadyMs,firstLandmarkVisibleMs,firstLandmarkDetailedMs,lastRenderMs,sceneActivationMs:firstRender-transitionStarted,
