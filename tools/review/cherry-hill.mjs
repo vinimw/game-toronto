@@ -39,7 +39,7 @@ async function verifyMobile(browser,target){
   }finally{await context.close();}
 }
 
-export async function evaluateCherryHill(browser,target,bundle,safeMessage,{pond=false,maple=false}={}){
+export async function evaluateCherryHill(browser,target,bundle,safeMessage,{pond=false,maple=false,cafe=false}={}){
   const viewport={width:1280,height:720};
   const context=await browser.newContext({viewport,reducedMotion:'reduce'});
   let recording;
@@ -55,11 +55,11 @@ export async function evaluateCherryHill(browser,target,bundle,safeMessage,{pond
     const north=await stats(page);
     assert.equal(north.cherryHill.assets,null);
     assert.ok(north.cherryHill.futureMemoryPosition);
-    const startPose=maple?[-125,795]:[-198,561];
+    const startPose=cafe?[-149.9,761.41]:maple?[-125,795]:[-198,561];
     await stage(startPose,Math.PI);
     const position=()=>page.locator('#game canvas').evaluate(canvas=>JSON.parse(canvas.dataset.reviewPose).position.local);
     await page.waitForFunction(z=>JSON.parse(document.querySelector('#game canvas').dataset.reviewPose).position.local[2]===z,startPose[1]);
-    if(!maple)assert.equal((await stats(page)).cherryHill.lod,null);
+    if(!maple&&!cafe)assert.equal((await stats(page)).cherryHill.lod,null);
     await page.evaluate(()=>{
       const overlay=document.createElement('div');
       overlay.id='cherry-streaming-overlay';
@@ -67,12 +67,18 @@ export async function evaluateCherryHill(browser,target,bundle,safeMessage,{pond
       document.body.append(overlay);
       window.cherryVideoStart=performance.now();
     });
-    if(maple)await page.locator('#speed-panel [data-toggle][aria-expanded="true"]').click();
+    if(maple||cafe)await page.locator('#speed-panel [data-toggle][aria-expanded="true"]').click();
     recording=await startViewportVideo(page,viewport,12,{touchControls:false});
     const legs=[];
     async function walk(label,yaw,destination,multiplier){
       const [x,,z]=await position();
-      await stage([x,z],yaw);
+      if(cafe){
+        await page.evaluate(heading=>window.aimExplorationReview(heading),yaw);
+        await page.waitForFunction(heading=>{
+          const yaw=JSON.parse(document.querySelector('#game canvas').dataset.reviewPose).orbit.yaw;
+          return Math.abs(Math.atan2(Math.sin(yaw-heading),Math.cos(yaw-heading)))<.02;
+        },yaw,{timeout:3000});
+      }else await stage([x,z],yaw);
       await page.locator('#speed-panel input').evaluate((slider,value)=>{
         slider.value=String(value);slider.dispatchEvent(new Event('input',{bubbles:true}));
       },multiplier);
@@ -110,6 +116,26 @@ export async function evaluateCherryHill(browser,target,bundle,safeMessage,{pond
           requestAnimationFrame(tick);
         }),{label,destination,yaw});
       }finally{await page.keyboard.up('w');}
+    }
+    if(cafe){
+      const stops=[[-139.55,769.7],[-126.66,777.26],[-115.15,782.85],[-105.49,787.26],[-96,790.63],[-74.5,779],[-74.25,776.5]];
+      for(const target of stops){
+        const [x,,z]=await position();
+        const yaw=Math.atan2(x-target[0],z-target[1]);
+        legs.push(await walk('West Road · chegada ao Grenadier Café',yaw,target[1],1));
+      }
+      await page.evaluate(()=>window.aimExplorationReview(.22));
+      await page.waitForTimeout(1100);
+      const video='grenadier-cafe-walk.webm';
+      const playback=await recording.stop(join(bundle,video));
+      const complete=legs.every((leg,i)=>Math.hypot(leg.end[0]-stops[i][0],leg.end[2]-stops[i][1])<2);
+      const [x,,z]=await position();
+      const distanceToThreshold=Math.hypot(x+73.95,z-775.845);
+      const access={id:'south-exterior',distanceToThreshold,reached:distanceToThreshold<=1.2,transitable:false};
+      const sector=(await stats(page)).sectors.find(s=>s.id==='high-park:grenadier-stop');
+      return {access,status:complete&&access.reached&&sector?.state==='active'&&errors.length===0?'passed':'failed',complete,video,playback,
+        sector,errors,p99Ms:percentile99(legs.flatMap(leg=>leg.intervals)),
+        route:legs.map(({intervals,...leg})=>({...leg,...frameStatistics(intervals)}))};
     }
     if(maple){
       const ends=[1009,1030,813,1020];

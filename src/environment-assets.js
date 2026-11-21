@@ -1,3 +1,5 @@
+import {cafeApronMaps} from './grenadier-stop.js';
+import {corridorModelKeys} from './park-corridor-trees.js';
 import {assetUrl} from './asset-url.js';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
@@ -45,6 +47,7 @@ export const acquireEnvironmentAsset=key=>assets.acquire(key);
 export const acquireEntranceGate=()=>acquireEnvironmentAsset('north-gate.glb');
 
 export const entranceAssetStats=()=>assets.stats(key=>entranceDependencies.includes(key));
+export const entranceExclusiveAssetStats=()=>assets.stats(key=>entranceDependencies.includes(key)&&!corridorModelKeys.includes(key)&&!cafeApronMaps.includes(key));
 export const cherryAssetStats=()=>assets.stats(key=>key.startsWith('sakura-'));
 
 export async function loadEntranceAssets(signal){

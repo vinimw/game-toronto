@@ -1,3 +1,4 @@
+import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import * as THREE from 'three';
 import {nearSegment,pointInPolygon,seeded} from './geo.js';
 import {contactTexture} from './park-surfaces.js';
@@ -57,9 +58,17 @@ function realGroves(bounds,footpaths,zone,rand){
 
 function grassTuft(){
   const vertices=[];
-  for(const angle of [0,2.1,4.2]){
-    const x=Math.cos(angle),z=Math.sin(angle);
-    vertices.push(-x*.22,0,-z*.22,x*.22,0,z*.22,x*.37,1,z*.37);
+  for(let i=0;i<4;i++){
+    const angle=i*2.399,x=Math.cos(angle),z=Math.sin(angle);
+    const height=.53+i*.12;
+    let previous;
+    for(let j=0;j<=3;j++){
+      const t=j/3,reach=.09+.35*t*t,width=.15*(1-t)**.7;
+      const left=[x*reach-z*width,height*t,z*reach+x*width];
+      const right=[x*reach+z*width,height*t,z*reach-x*width];
+      if(previous)vertices.push(...previous[0],...left,...previous[1],...left,...right,...previous[1]);
+      previous=[left,right];
+    }
   }
   const geometry=new THREE.BufferGeometry();
   geometry.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));
@@ -79,6 +88,22 @@ function broadCrown(phase,habit=null){
   }
   geometry.computeVertexNormals();
   return geometry;
+}
+
+function forkedTrunk(){
+  const pieces=[new THREE.CylinderGeometry(.19,.31,1,7)];
+  const up=new THREE.Vector3(0,1,0);
+  for(const [x,z] of [[-.75,.18],[.64,.39],[-.12,-.55]]){
+    const start=new THREE.Vector3(0,.05,0),end=new THREE.Vector3(x,.64,z);
+    const direction=end.clone().sub(start);
+    const branch=new THREE.CylinderGeometry(.036,.10,direction.length(),5);
+    branch.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(up,direction.normalize()));
+    branch.translate(...start.lerp(end,.5).toArray());
+    pieces.push(branch);
+  }
+  const result=mergeGeometries(pieces);
+  pieces.forEach(piece=>piece.dispose());
+  return result;
 }
 
 export function plantPark(scene,world,portals,blocked,clearings=[],environment=parkEnvironment(world)){
@@ -112,7 +137,7 @@ export function plantPark(scene,world,portals,blocked,clearings=[],environment=p
   }
   const spring=Boolean(sakuraGrove);
   const geometry={
-    trunk:new THREE.CylinderGeometry(.19,.31,1,5),
+    trunk:world.dataset==='high-park-expanded'?forkedTrunk():new THREE.CylinderGeometry(.19,.31,1,5),
     round:real?broadCrown(1.5,spring?'maple':null):new THREE.IcosahedronGeometry(1,1),
     spire:new THREE.CylinderGeometry(real?.28:.14,1,2,7),
     column:new THREE.IcosahedronGeometry(1,real?0:1),

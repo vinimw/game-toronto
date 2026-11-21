@@ -8,7 +8,7 @@ const open=()=>true;
 function move(player,running=false,canWalk=open,position=[-4,-4],right=1,forward=0){
   return player.move(position,{right,forward,yaw:0,running,dt:.05,canWalk});
 }
-for(const multiplier of [1,2,3,5])test(`${multiplier}x scales walk/run but preserves cadence and heading`,()=>{
+for(const multiplier of [1,2,3,5,10,15])test(`${multiplier}x scales walk/run but preserves cadence and heading`,()=>{
   const player=new PlayerController();player.setMultiplier(multiplier);
   const walk=move(player),run=move(player,true);
   close(walk.speed,5.1*multiplier);close(run.speed,9*multiplier);
@@ -17,14 +17,14 @@ for(const multiplier of [1,2,3,5])test(`${multiplier}x scales walk/run but prese
 });
 test('half steps, clamping, immediate reset and fresh-session default',()=>{
   const player=new PlayerController();
-  for(let i=1;i<=5;i+=.5)assert.equal(player.setMultiplier(i),i);
-  assert.equal(player.setMultiplier(Infinity),5);assert.equal(player.setMultiplier(NaN),5);
-  assert.equal(player.setMultiplier(-2),1);assert.equal(player.setMultiplier(20),5);
+  for(let i=1;i<=15;i+=.5)assert.equal(player.setMultiplier(i),i);
+  assert.equal(player.setMultiplier(Infinity),15);assert.equal(player.setMultiplier(NaN),15);
+  assert.equal(player.setMultiplier(-2),1);assert.equal(player.setMultiplier(20),15);
   player.setMultiplier(1);close(move(player,true).speed,9);
   player.setMultiplier(5);assert.equal(new PlayerController().multiplier,1);
 });
-test('5x diagonal substeps stop at thin obstacles, water and bounds',()=>{
-  const player=new PlayerController();player.setMultiplier(5);
+test('15x diagonal substeps stop at thin obstacles, water and bounds',()=>{
+  const player=new PlayerController();player.setMultiplier(15);
   for(const kind of ['building','water']){
     const canWalk=createWalkTest([{kind,points:[[0,-10],[.01,-10],[.01,10],[0,10]]}],[-10,-10,10,10]);
     const result=move(player,true,canWalk,[-1,0]);
@@ -55,6 +55,11 @@ test('slider, buttons, minimize and output stay synchronized without persistence
   nodes['[data-plus]'].dispatchEvent(new Event('click'));assert.equal(player.multiplier,4);
   nodes['[data-minus]'].dispatchEvent(new Event('click'));assert.equal(player.multiplier,3.5);
   panel.update(17.85);assert.equal(nodes['[data-actual]'].textContent,'Atual: 17,9 un/s');
+  assert.equal(nodes.input.max,'15');
+  nodes.input.value='14.5';nodes.input.dispatchEvent(new Event('input'));
+  nodes['[data-plus]'].dispatchEvent(new Event('click'));
+  assert.equal(nodes['[data-multiplier]'].textContent,'15×');
+  assert.equal(nodes['[data-plus]'].disabled,true);
   nodes['[data-normal]'].dispatchEvent(new Event('click'));assert.equal(player.multiplier,1);assert.equal(nodes.input.value,'1');
   assert.equal(nodes['[data-minus]'].disabled,true);assert.match(nodes['[data-configured]'].textContent,/5,1.*9,0/);
 });

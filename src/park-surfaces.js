@@ -1,3 +1,4 @@
+import {parkSurfaceFinish} from './park-surface-finish.js';
 import * as THREE from 'three';
 import {seeded} from './geo.js';
 import {realPathAppearance} from './visual-settings.js';
@@ -162,6 +163,7 @@ export function addPathBatches(scene,paths,style,pathWidth,texture,onGeometry,re
     geometry.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));
     geometry.computeVertexNormals();worldUVs(geometry,false,real);
     const base=new THREE.MeshLambertMaterial({color,map:texture,side:THREE.DoubleSide});
+    if(terrain)parkSurfaceFinish(base,'path',true);
     const mesh=new THREE.Mesh(geometry,typeof key==='object'?materialFor(key,base):base);
     if(mesh.material!==base)base.dispose();
     scene.add(mesh);

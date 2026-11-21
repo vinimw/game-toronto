@@ -1,3 +1,4 @@
+import {parkSurfaceFinish} from './park-surface-finish.js';
 import * as THREE from 'three';
 import {pointInPolygon} from './geo.js';
 import {worldUVs} from './park-surfaces.js';
@@ -51,7 +52,7 @@ export function terrainSectors(terrain,step=terrainSectorStep){
 }
 
 export function addTerrainChunks(scene,terrain,areas,style,texture){
-  const material=new THREE.MeshLambertMaterial({map:texture,vertexColors:true});
+  const material=parkSurfaceFinish(new THREE.MeshLambertMaterial({map:texture,vertexColors:true}),'ground',true);
   const base=new THREE.Color(style.ground),grass=new THREE.Color(style.meadow);
   const wood=new THREE.Color(style.woodland),sport=new THREE.Color(0x8a9d69);
   const regions=areas.filter(f=>f.kind==='sport'||['grass','forest','meadow'].includes(f.tags.landuse)||

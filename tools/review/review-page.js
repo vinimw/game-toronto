@@ -1,3 +1,4 @@
+import {steppedFoundationThreshold,excessiveFoundationThreshold} from '../../src/building-grounding.js';
 import {collectResources} from '../../src/scene-resources.js';
 import * as THREE from 'three';
 import {SceneManager} from '../../src/scene-manager.js';
@@ -29,7 +30,7 @@ document.body.append(renderer.domElement);
 const evidenceByScene=new WeakMap();
 const manager=new SceneManager({manifest:regionManifest,loadRegion,avatar,buildScene(scene,world,portals){
   const evidence=world.mode==='osm'&&!world.terrain?collectRenderedGeometry():null;
-  const stats=buildWorld(scene,world,portals,evidence);
+  const stats=buildWorld(scene,{...world,captureBuildingBounds:true},portals,evidence);
   if(evidence)evidenceByScene.set(scene,evidence.parts);
   return stats;
 }});
@@ -102,7 +103,7 @@ async function prepare(id){
   }
   const active=manager.active;
   active.stats.setQuality(quality);
-  await active.stats.streaming?.prime({maple:Boolean(point.maple),pond:Boolean(point.pond),cherry:Boolean(point.cherry||point.id==='40-expanded-cherry-hill')});
+
   const world=active.world,origin=world.mode==='osm'?'OSM REAL':'DEMO';
   const [minX,minZ,maxX,maxZ]=world.bbox;
   const geographicBounds=origin==='OSM REAL'&&world.origin?{
@@ -142,8 +143,27 @@ async function prepare(id){
   active.stats.setQuality(quality);
   active.stats.animateMemoryMarkers?.(0);
   camera=frameCamera(point,world,position);
+  await active.stats.streaming?.prime({focus:position,maple:Boolean(point.maple),pond:Boolean(point.pond),cherry:Boolean(point.cherry||point.id==='40-expanded-cherry-hill')});
   if(camera.isOrthographicCamera)active.stats.setDetailFocus?.();
   else active.stats.setDetailFocus?.(camera.position.x,camera.position.z);
+  const debugGroup=active.scene.getObjectByName('review-building-grade');
+  if(debugGroup){debugGroup.removeFromParent();debugGroup.geometry.dispose();debugGroup.material.dispose();}
+  if(point.groundingDebug){
+    const vertices=[],colors=[];
+    for(const {feature,placement} of active.stats.buildingPlacements){
+      if(Math.hypot(feature.points[0][0]-122,feature.points[0][1]-85)>100)continue;
+      for(let i=1;i<feature.points.length;i++){
+        const a=feature.points[i-1],b=feature.points[i];
+        for(const [x,z] of [a,b]){vertices.push(x,placement.floor+.03,z);colors.push(1,.3,.1);}
+        for(const [x,z] of [a,b]){vertices.push(x,world.terrain.at(x,z)+.06,z);colors.push(.25,.9,1);}
+      }
+    }
+    const geometry=new THREE.BufferGeometry();
+    geometry.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));
+    geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
+    const lines=new THREE.LineSegments(geometry,new THREE.LineBasicMaterial({vertexColors:true,depthTest:false}));
+    lines.name='review-building-grade';lines.renderOrder=8;active.scene.add(lines);
+  }
   render();
   currentPoint=id;
   document.querySelector('#review-attribution')?.remove();
@@ -240,10 +260,11 @@ function geography(){
     ],
   };
 }
-function expandedTerrain(){
+async function expandedTerrain(){
   const {world,stats,spawn,scene}=manager.active;
   const {terrain,terrainData,coverage}=world;
   if(!terrain)return {status:'unavailable'};
+  await stats.streaming?.prime({focus:[-82,784]});
   const {heightsCm,...source}=terrainData;
   const landmarkSources=[
     ['Entrada norte',174188399,spawn],
@@ -271,9 +292,57 @@ function expandedTerrain(){
   const memory=stats.memoryPoints[0],marker=memory&&scene.getObjectByName('memory:'+memory.memory.id);
   const memoryGrounded=Boolean(marker&&Math.abs(marker.position.y-terrain.at(...memory.position))<.001);
   const chunks=scene.children.filter(mesh=>mesh.name==='terrain-chunk').length;
-  return {status:chunks>0&&waterBlocked&&memoryGrounded&&landmarks.every(site=>site.local)?'passed':'failed',
+  const buildings=stats.buildingPlacements.map(({feature,placement,height,renderedWorldBounds,entrances})=>{
+    const points=feature.points,x=points.map(p=>p[0]),z=points.map(p=>p[1]);
+    const center=[(Math.min(...x)+Math.max(...x))/2,(Math.min(...z)+Math.max(...z))/2];
+    const basement=Number(feature.tags?.layer)<0||feature.tags?.location==='underground';
+    const buried=placement.high-placement.floor,floating=placement.bottom-placement.low;
+    const relief=placement.high-placement.low;
+    const exterior=feature.osmId===125699284?scene.getObjectByName('grenadier-cafe-exterior'):null;
+    const overlay=exterior?new THREE.Box3().setFromObject(exterior,true):null;
+    const actual=renderedWorldBounds?new THREE.Box3(new THREE.Vector3(...renderedWorldBounds.min),new THREE.Vector3(...renderedWorldBounds.max)):null;
+    if(actual&&overlay)actual.union(overlay);
+    const estimated={min:[Math.min(...x),placement.bottom,Math.min(...z)],
+      max:[Math.max(...x),placement.floor+(overlay?6.25:height),Math.max(...z)]};
+    const delta=actual?{min:actual.min.toArray().map((value,i)=>value-estimated.min[i]),
+      max:actual.max.toArray().map((value,i)=>value-estimated.max[i])}:null;
+    const doors=(exterior?.userData.entrances??entrances??[]).map(({threshold,approach,...access})=>{
+      const absoluteY=threshold[1]+(exterior?0:placement.floor);
+      const samples=Array.from({length:21},(_,i)=>{
+        const t=i/20,x=THREE.MathUtils.lerp(approach[0],threshold[0],t),z=THREE.MathUtils.lerp(approach[2],threshold[2],t);
+        return {local:[x,z],grade:terrain.at(x,z),walkable:stats.canWalk(x,z)};
+      });
+      const last=samples.findIndex(sample=>!sample.walkable);
+      const closest=samples[last===-1?20:Math.max(0,last-1)];
+      const rise=absoluteY-closest.grade;
+      return {...access,threshold:[threshold[0],absoluteY,threshold[2]],samples,rise,
+        approachFree:samples[0].walkable,thresholdHeightWithinTolerance:Math.abs(rise)<=.25,
+        status:!samples[0].walkable||Math.abs(rise)>.25?'entrance-inaccessible':'approach-clear'};
+    });
+    const categories=[buried>.025?'buried':floating>.025?'floating':relief>excessiveFoundationThreshold?'excessive-foundation':placement.foundation?'foundation':'grounded'];
+    if(doors.some(door=>door.status==='entrance-inaccessible'))categories.push('entrance-inaccessible');
+    if(delta&&[...delta.min,...delta.max].some(value=>Math.abs(value)>.25))categories.push('bounds-mismatch');
+    if(basement||relief>steppedFoundationThreshold||categories.length>1)categories.push('requires-review');
+    return {osmId:feature.osmId,tags:feature.tags,relief,categories,doors,accessibleApproach:doors.length?'sampled':'unverified',type:'building',local:center,geographic:geographicPosition(center,world.origin),
+      terrain:{min:placement.low,max:placement.high},baseY:placement.floor,foundationBaseY:placement.bottom,
+      visibleWallHeightAtHighestGrade:height-Math.max(0,buried),legacyBurialMeters:placement.high-placement.legacy,
+      maximumBaseDifference:Math.max(Math.abs(buried),Math.abs(placement.floor-placement.low)),
+      renderedWorldBounds:renderedWorldBounds??null,
+      estimatedWorldBounds:estimated, boundsDelta:delta,
+      compositeWorldBounds:actual?{min:actual.min.toArray(),max:actual.max.toArray()}:null,
+      streamedExteriorBounds:overlay?{min:overlay.min.toArray(),max:overlay.max.toArray()}:null,
+      status:basement?'insufficient-data':buried>.025?'buried':floating>.025?'floating':placement.foundation?'foundation':'grounded'};
+  });
+  const invalid=buildings.filter(b=>b.categories.some(status=>['buried','floating'].includes(status))).length;
+  const buildingGrounding={status:invalid?'failed':'passed',total:buildings.length,invalid,
+    legacyBuriedOver25cm:buildings.filter(b=>b.legacyBurialMeters>.25).length,
+    source:'HRDEM recortado à implantação OSM. Caixas de malhas medidas separadamente das estimativas; setores inativos podem não ter amostra.',
+    steepCases:buildings.filter(b=>b.relief>steppedFoundationThreshold).sort((a,b)=>b.relief-a.relief).map(b=>b.osmId),
+    extremeCases:buildings.filter(b=>b.relief>excessiveFoundationThreshold).sort((a,b)=>b.relief-a.relief).map(b=>b.osmId),
+    requestedHud:{east:122,north:-85,local:[122,85]},buildings};
+  return {buildingGrounding,status:!invalid&&chunks>0&&waterBlocked&&memoryGrounded&&landmarks.every(site=>site.local)?'passed':'failed',
     source,coverage,landmarks,chunks,waterBlocked,memoryGrounded,spawnGrounded:stats.canWalk(...spawn),
-    train:{status:'pending',reference:'https://www.toronto.ca/legdocs/mmis/2026/gg/bgrd/backgroundfile-284637.pdf'},
+    train:{status:'static',routeStatus:'pending',reference:'https://www.toronto.ca/legdocs/mmis/2026/gg/bgrd/backgroundfile-284637.pdf'},
     limits:['Recorte geográfico da primeira entrega, modelos de edifício ainda genéricos.',
       'Superfícies esportivas cartográficas, sem equipamentos detalhados.',
       'Precisão vertical local não verificada em campo. A superfície do lago não é batimetria.']};

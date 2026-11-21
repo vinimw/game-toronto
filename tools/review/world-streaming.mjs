@@ -142,7 +142,7 @@ async function exploration(browser,target,mobile,bundle){
       const outward=await travelLeg(page,controls,true);
       await waitEntrance(page,'idle');
       const distant=await capture(page);
-      assert.equal(distant.assets.decodedActive,1);
+      assert.equal(distant.entranceExclusiveAssets.decodedActive,1);
       assert.ok(distant.renderer.textures<before.renderer.textures,'Texturas da entrada continuam no renderer.');
       const traversed=before.sectors.filter(({id,bounds:[x,z,east,south]})=>
         id!==entrance&&x<=-8&&east>-8&&z<outward.end[2]&&south>outward.start[2]).map(sector=>sector.id);
@@ -177,7 +177,7 @@ async function exploration(browser,target,mobile,bundle){
     },far);
     await waitEntrance(page,'idle');
     const distantLanding=await capture(page);
-    assert.equal(distantLanding.assets.decodedActive,1);
+    assert.equal(distantLanding.entranceExclusiveAssets.decodedActive,1);
     assert.equal(await application(page).getAttribute('aria-busy'),'false');
 
     const detail=await pose(page);

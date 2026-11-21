@@ -144,3 +144,56 @@ const mapleSpringViews=[
 ];
 for(const [n,label,local,eye,look,way,profile] of mapleSpringViews)
   points.push({...terrainView(n+'-maple-spring','Maple Leaf Garden · '+label,local,way,eye,look,profile),maple:true});
+
+for(const [id,label,local,way,eye,look,profile] of [
+  ['87-tennis-player','Tênis · rede na altura do jogador',[61,188],1116261446,[-3,2.1,-2],[13,1,2]],
+  ['88-tennis-mobile','Tênis · quadras em Balanced',[61,188],1116261446,[-3,2.1,-2],[13,1,2],'mobile'],
+  ['89-trackless-train','Trackless Train · parada junto ao café',[-87,799],1389554894,[-4,2.1,4],[2,1,-6]],
+  ['90-grenadier-cafe','Grenadier Café · fachada de West Road',[-82,784],125699284,[-3,2.15,3],[0,2,-18]],
+  ['91-grenadier-cafe-aerial','Grenadier Café · aérea 3D',[-82,784],125699284,[49,47,22],[-4,0,-18]],
+  ['92-grenadier-cafe-mobile','Grenadier Café · vista mobile',[-82,784],125699284,[-3,2.15,3],[0,2,-18],'mobile'],
+]){
+  points.push(terrainView(id,label,local,way,eye,look,profile));
+}
+
+for(const [id,label,local,way,eye,look] of [
+  ['93-north-connected','Corredor norte · acesso esportivo',[28.69,184.12],806985059,[-4,2.6,-5],[12,1,8]],
+  ['94-west-connected','Cherry Hill · corredor em direção ao café',[-201.27,774.02],871510614,[2,2.7,-6],[0,1.4,13]],
+  ['95-hillside-connected','Hillside Gardens · acesso à margem',[-198.74,928.59],871510614,[4,2.8,-5],[-12,1,5]],
+]){
+  const view=terrainView(id,label,local,way,eye,look);
+  points.push({...view,cherry:id==='94-west-connected',pond:id==='95-hillside-connected'});
+}
+
+const groundingViews=[
+  ['96-grounding-hud','Implantação · posição indicada no HUD',[122,85],[-4,2.8,-5],[-12,0,41]],
+  ['97-grounding-side','Implantação · fachada lateral',[122,85],[25,2.8,34],[-14,0,38]],
+  ['98-grounding-aerial','Implantação · vista elevada',[122,85],[36,50,3],[-10,0,41]],
+];
+for(const [id,label,local,eye,look] of groundingViews){
+  const point=terrainView(id,label,local,43805272,eye,look);
+  points.push(point,{...point,id:id.replace(/^9[678]/,String(Number(id.slice(0,2))-70))+'-before',label:label+' · antes',legacyGrounding:true});
+}
+points.push(
+  {...terrainView('99-grounding-debug','Implantação · laranja: piso; azul: terreno',[122,85],43805272,[25,4,28],[-14,0,38]),groundingDebug:true},
+  terrainView('29-grounding-mobile','Implantação · revisão mobile',[122,85],43805272,[-3,2.8,-6],[-10,1,40],'mobile'),
+);
+
+for(const [id,label,local,way,eye,look,profile] of [
+  ['96-v2-hud','HUD',[122,85],43805272,[-4,2.8,-5],[-12,0,41]],
+  ['97-v2-flat','Terreno quase plano',[-56,263],287897795,[0,2,-4],[-3.5,1,13.4]],
+  ['98-v2-moderate','Embasamento moderado',[122,85],43805272,[26,2.8,43],[-4,1,41]],
+  ['99-v2-steep','Casa em encosta',[-461,695],663017725,[3,3,4],[-13,3,-14]],
+  ['99-v2-maximum','Maior desnível',[-444,45],70364374,[5,5,6],[0,5,-27]],
+  ['90-v2-access','Grenadier Café',[-82,784],125699284,[-3,2.15,3],[0,2,-18]],
+  ['92-v2-balanced','Embasamento em Balanced',[122,85],43805272,[26,2.8,43],[-4,1,41],'mobile'],
+]){
+  const view=terrainView(id,'Implantação V2 · '+label,local,way,eye,look,profile);
+  points.push(view,{...view,id:id+'-baseline',label:'Implantação V1 · '+label,foundationV1:true});
+}
+
+points.push(
+  terrainView('93-milestone-sports-balanced','Percurso norte · chegada às quadras em Balanced',[28.69,184.12],806985059,[-4,2.6,-5],[12,1,8],'mobile'),
+  terrainView('94-milestone-west-road','West Road · entrada no corredor',[-164,530],174188399,[4,2.8,-5],[-2,1.3,14]),
+  terrainView('90-milestone-cafe-access','Grenadier Café · aproximação à soleira exterior',[-74.5,779],125699284,[2,1.8,3],[.55,1,-3.15]),
+);

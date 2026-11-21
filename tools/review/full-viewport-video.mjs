@@ -17,14 +17,14 @@ function ffmpegPath(){
   return process.env.REVIEW_FFMPEG??registry.findExecutable('ffmpeg').executablePath();
 }
 
-async function encode(frames,output,fps){
+async function encode(frames,output,fps,crf=14){
   const ffmpeg=ffmpegPath();
   const encoders=spawnSync(ffmpeg,['-encoders'],{encoding:'utf8'});
   if(encoders.error||encoders.status!==0)throw new Error('FFmpeg do Playwright indisponível.',{cause:encoders.error});
   const codec=/\blibvpx-vp9\b/.test(encoders.stdout)?'libvpx-vp9':'libvpx';
   const child=spawn(ffmpeg,['-y','-loglevel','error','-f','image2pipe','-framerate',String(fps),
     '-c:v','mjpeg','-i','pipe:0','-an','-c:v',codec,'-pix_fmt','yuv420p',
-    '-deadline','realtime','-cpu-used','5','-g','1','-crf','20','-b:v','0',output],{stdio:['pipe','ignore','pipe']});
+    '-deadline','realtime','-cpu-used','5','-g','1','-crf',String(crf),'-b:v','0',output],{stdio:['pipe','ignore','pipe']});
   let stderr='';
   child.stderr.on('data',chunk=>{stderr+=chunk;});
   const [input,exit]=await Promise.allSettled([
@@ -143,8 +143,18 @@ export async function startViewportVideo(page,viewport,fps=24,{touchControls=tru
         const index=Math.floor(frames.length*fraction);
         return {index,jpeg:frames[index].toString('base64')};
       });
-      const playback=await validate(page.context(),output,references,viewport,frames.length,fps);
-      return {geometry,fps,sourceFrames:captures.length,sourceFramesPerSecond:1000*captures.length/stoppedAt,encodedFrames:frames.length,playback};
+      let playback,encodingCrf=14;
+      try{
+        playback=await validate(page.context(),output,references,viewport,frames.length,fps);
+      }catch(error){
+        if(error.code!=='ERR_ASSERTION'||!error.message.startsWith('O quadro codificado diverge'))throw error;
+        // Retry encoding the same gameplay frames with less compression.
+        // Keep all viewport and frame validation criteria in both attempts.
+        encodingCrf=7;
+        await encode(frames,output,fps,encodingCrf);
+        playback=await validate(page.context(),output,references,viewport,frames.length,fps);
+      }
+      return {geometry,fps,encodingCrf,sourceFrames:captures.length,sourceFramesPerSecond:1000*captures.length/stoppedAt,encodedFrames:frames.length,playback};
     },
   };
 }

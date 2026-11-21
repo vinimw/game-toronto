@@ -6,20 +6,54 @@ export const mapleWay=251569209;
 export const mapleSector='high-park:maple-leaf-garden';
 export const mapleBounds=[-166,992,-111,1051];
 
+function drapedSurface(world,ring,holes,offset){
+  const loops=[ring,...holes];
+  const faces=THREE.ShapeUtils.triangulateShape(
+    ring.map(([x,z])=>new THREE.Vector2(x,z)),
+    holes.map(hole=>hole.map(([x,z])=>new THREE.Vector2(x,z))),
+  );
+  const points=loops.flat(),positions=[];
+  function triangle(a,b,c){
+    const corners=[a,b,c];
+    const squared=corners.map((p,i)=>{
+      const q=corners[(i+1)%3];
+      return (p[0]-q[0])**2+(p[1]-q[1])**2;
+    });
+    const longest=squared.indexOf(Math.max(...squared));
+    if(squared[longest]>1.35**2){
+      const p=corners[longest],q=corners[(longest+1)%3],r=corners[(longest+2)%3];
+      const mid=[(p[0]+q[0])/2,(p[1]+q[1])/2];
+      triangle(p,mid,r);triangle(mid,q,r);
+      return;
+    }
+    for(const [x,z] of corners)positions.push(x,world.terrain.at(x,z)+offset,z);
+  }
+  for(const [a,b,c] of faces)triangle(points[c],points[b],points[a]);
+  return positions;
+}
+
+export function mapleGardenBase(world,feature){
+  const positions=drapedSurface(world,feature.points.slice(0,-1),[],.057),colors=[],tint=new THREE.Color();
+  for(let i=0;i<positions.length;i+=3){
+    const x=positions[i],z=positions[i+2];
+    tint.setHex(0x843c37).multiplyScalar(.93+.07*Math.sin(x*2.4+z*.73)+.05*Math.sin(z*3.6-x));
+    colors.push(...tint.toArray());
+  }
+  const geometry=new THREE.BufferGeometry();
+  geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+  geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));geometry.computeVertexNormals();
+  return new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({
+    vertexColors:true,roughness:.96,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,
+  }));
+}
+
 export function buildMapleGarden(world,feature,quality){
   const root=new THREE.Group(),random=seeded(mapleWay);
   root.name=mapleSector;
   const ring=feature.points.slice(0,-1);
-  const vertices=ring.map(([x,z])=>new THREE.Vector2(x,z));
-  const faces=THREE.ShapeUtils.triangulateShape(vertices,[]);
   const height=(x,z)=>world.terrain.at(x,z);
-  const top=[],edge=[];
   const bedHeight=.085;
-  for(const face of faces){
-    for(const index of [...face].reverse()){
-      const [x,z]=ring[index];top.push(x,height(x,z)+bedHeight,z);
-    }
-  }
+  const top=drapedSurface(world,ring,[],bedHeight),edge=[];
   for(let i=0;i<ring.length;i++){
     const [x,z]=ring[i],[u,v]=ring[(i+1)%ring.length];
     const a=[x,height(x,z)+.025,z],b=[u,height(u,v)+.025,v];
@@ -42,7 +76,7 @@ export function buildMapleGarden(world,feature,quality){
     mesh.computeVertexNormals();
     return mesh;
   }
-  root.add(new THREE.Mesh(geometry(top),material(0x4d392d)),new THREE.Mesh(geometry(edge),material(0x74664d)));
+  root.add(new THREE.Mesh(geometry(top),material(0x793835)),new THREE.Mesh(geometry(edge),material(0x74664d)));
   const samples=[];
   const step=quality==='high'?.25:quality==='balanced'?.38:.61;
   for(let z=1014;z<1030;z+=step)for(let x=-147;x<-132;x+=step){
@@ -68,13 +102,13 @@ export function buildMapleGarden(world,feature,quality){
     }
   }
   const batch=new THREE.InstancedMesh(geometry(leaf),material(0xffffff),samples.length);
-  const bloomSamples=samples.filter(()=>random()<.085);
+  const bloomSamples=samples.filter(()=>random()<.72);
   const petals=new THREE.LatheGeometry([[0,0],[.029,.009],[.045,.038],[.043,.083],[.031,.105]]
-    .map(([x,y])=>new THREE.Vector2(x,y)),quality==='high'?9:6).translate(0,.34,0);
-  const stem=new THREE.CylinderGeometry(.004,.005,.35,5).translate(0,.175,0);
+    .map(([x,y])=>new THREE.Vector2(x,y)),quality==='high'?7:6).translate(0,.34,0);
+  const stem=new THREE.CylinderGeometry(.004,.005,.35,4,1,true).translate(0,.175,0);
   const flowerGeometry=mergeGeometries([stem,petals],true);
   stem.dispose();petals.dispose();
-  const blooms=new THREE.InstancedMesh(flowerGeometry,[material(0x567140),material(0xffa69e)],bloomSamples.length);
+  const blooms=new THREE.InstancedMesh(flowerGeometry,[material(0x567140),material(0xffffff)],bloomSamples.length);
   const tint=new THREE.Color(),pose=new THREE.Object3D();
   const palette=[0x59773f,0x527044,0x66894a];
   samples.forEach(([x,z],index)=>{
@@ -88,19 +122,15 @@ export function buildMapleGarden(world,feature,quality){
     pose.position.set(x,height(x,z)+bedHeight,z);
     pose.rotation.y=random()*6.28;pose.scale.setScalar(.85+random()*.3);pose.updateMatrix();
     blooms.setMatrixAt(index,pose.matrix);
-    blooms.setColorAt(index,tint.setHex(index%4===0?0xffded5:0xffbcae));
+    blooms.setColorAt(index,tint.setHex([0xb94043,0xa52f3d,0xdc5851,0x8b293a,0xcb4740,0xe48579][index%6]));
   });
   root.add(blooms);
   const center=[-139.2,1021.95];
-  const apron=[];
-  for(let i=0;i<72;i++){
-    const point=(j,r)=>[center[0]+Math.cos(j*Math.PI/36)*r,center[1]+Math.sin(j*Math.PI/36)*r];
-    const emit=([x,z])=>apron.push(x,height(x,z)+.036,z);
-    for(let r=0;r<9;r++){
-      const a=point(i,r),b=point(i+1,r),c=point(i,r+1),d=point(i+1,r+1);
-      for(const vertex of [a,c,d,a,d,b])emit(vertex);
-    }
-  }
+  const apronRing=Array.from({length:72},(_,i)=>{
+    const angle=i*Math.PI/36;
+    return [center[0]+Math.cos(angle)*9,center[1]+Math.sin(angle)*9];
+  });
+  const apron=drapedSurface(world,apronRing,[ring],.036);
   const concrete=material(0xcac6b7);
   concrete.polygonOffset=true;concrete.polygonOffsetFactor=-2;
   root.add(new THREE.Mesh(geometry(apron),concrete));

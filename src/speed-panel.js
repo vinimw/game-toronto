@@ -1,3 +1,4 @@
+import {MAX_MULTIPLIER} from './player-speed-settings.js';
 export function speedShortcut(event){
   if(event.ctrlKey||event.metaKey||event.altKey||event.target?.closest?.('input,textarea,select,[contenteditable="true"],[role="textbox"]'))return 0;
   return ['+','='].includes(event.key)?1:['-','−'].includes(event.key)?-1:0;
@@ -5,6 +6,7 @@ export function speedShortcut(event){
 
 export function bindSpeedPanel(root,player,{minimized=false,onFocus=()=>{}}={}){
   const slider=root.querySelector('input'),badge=root.querySelector('[data-multiplier]');
+  slider.max=String(MAX_MULTIPLIER);
   const configured=root.querySelector('[data-configured]'),actual=root.querySelector('[data-actual]');
   const toggle=root.querySelector('[data-toggle]'),body=root.querySelector('[data-body]');
   const chevron=root.querySelector('[data-chevron]');
@@ -15,7 +17,7 @@ export function bindSpeedPanel(root,player,{minimized=false,onFocus=()=>{}}={}){
     badge.textContent=`${player.multiplier.toLocaleString('pt-BR')}×`;
     configured.textContent=`Caminhar ${format(player.configuredSpeed())} · Correr ${format(player.configuredSpeed(true))} un/s`;
     slider.setAttribute('aria-valuetext',`${player.multiplier.toLocaleString('pt-BR')} vezes`);
-    minus.disabled=player.multiplier===1;plus.disabled=player.multiplier===5;
+    minus.disabled=player.multiplier===1;plus.disabled=player.multiplier===MAX_MULTIPLIER;
   }
   function collapse(value){
     body.hidden=value;toggle.setAttribute('aria-expanded',String(!value));

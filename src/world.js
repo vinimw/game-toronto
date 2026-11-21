@@ -1,3 +1,7 @@
+import {buildingPlacement,addBuildingFoundation} from './building-grounding.js';
+import {mapleWay,mapleGardenBase} from './maple-garden.js';
+import {cafeWay,trainFootprints} from './grenadier-stop.js';
+import {tennisBlocks} from './park-sports.js';
 import {pondId,pondWater} from './grenadier-pond.js';
 import {hillSurface,cherrySky} from './cherry-hill-surfaces.js';
 import {cherryHill} from './cherry-hill-manifest.js';
@@ -27,7 +31,7 @@ function makeBuilding(f,index){
   if(points.length<3)return null;
   const s=new THREE.Shape();points.forEach(([x,z],i)=>i?s.lineTo(x,-z):s.moveTo(x,-z));s.closePath();
   const h=buildingHeight(f.tags);
-  const color=new THREE.Color().setHSL(.07+rand()*.08,.13+rand()*.13,.65+rand()*.13);
+  const color=f.osmId===cafeWay?new THREE.Color(0x789292):new THREE.Color().setHSL(.07+rand()*.08,.13+rand()*.13,.65+rand()*.13);
   const mesh=new THREE.Mesh(new THREE.ExtrudeGeometry(s,{depth:h,bevelEnabled:false,curveSegments:1,steps:1}),new THREE.MeshLambertMaterial({color}));
   mesh.rotation.x=-Math.PI/2;mesh.receiveShadow=true;mesh.castShadow=false;
   const roof=flat(points,h+.04,rand()>.5?0x958575:0x8b8580); const group=new THREE.Group();group.add(mesh,roof);return group;
@@ -54,7 +58,10 @@ export function buildWorld(scene,world,portals=[],evidence){
   const greens=world.features.filter(f=>f.kind==='green'),paths=world.features.filter(f=>f.kind==='path'||f.kind==='rail');
   const buildings=world.features.filter(f=>f.kind==='building'),waters=world.features.filter(f=>f.kind==='water');
   if(terrain)addTerrainChunks(scene,terrain,[...world.features.filter(f=>f.kind==='sport'),...greens],style,texture);
-  else for(const feature of greens){
+  if(terrain){
+    const garden=greens.find(feature=>feature.osmId===mapleWay);
+    if(garden)scene.add(mapleGardenBase(world,garden));
+  }else for(const feature of greens){
     const wooded=feature.tags?.landuse==='forest'||(real&&feature.tags?.natural==='wood');
     const height=real&&feature.tags?.landuse==='grass'?-.021:real&&wooded?-.023:-.025;
     const mesh=flat(feature.points,height,wooded?style.woodland:style.meadow);
@@ -88,6 +95,12 @@ export function buildWorld(scene,world,portals=[],evidence){
   let vegetation,cameraOccluders=new Set();
   const activeSakuraArts=new Set();
   const furniture=[],cameraObstacles=[],clearings=[];
+  const buildingPlacements=[];
+  function captureBuildingBounds(model,record){
+    if(!world.captureBuildingBounds)return;
+    const bounds=new THREE.Box3().setFromObject(model,true);
+    if(!bounds.isEmpty())record.renderedWorldBounds={min:bounds.min.toArray(),max:bounds.max.toArray()};
+  }
   const landmarks=[],buildingBatches=terrain?terrainBuildingBatches(scene):null;
   const streaming=terrain?highParkStreaming(scene,world,sun,style,pathLayers,art=>{
     if(entrance)cameraVolumes.splice(cameraVolumes.length-entrance.cameraVolumes.length);
@@ -97,9 +110,11 @@ export function buildWorld(scene,world,portals=[],evidence){
       art.setQuality(quality);
       art.setDetailFocus(...detailFocus);
     }
-  },(feature,index,floor)=>{
+  },(feature,index,placement)=>{
     const model=makeBuilding(feature,index);
-    model.position.y=floor;
+    model.position.y=placement.floor;
+    addBuildingFoundation(model,feature.points,placement,world.steppedGrounding===false?null:terrain);
+    captureBuildingBounds(model,buildingPlacements[index]);
     return model;
   },{
     getSeasonalTreePlacements:()=>vegetation?.seasonalTreePlacements??[],
@@ -111,23 +126,31 @@ export function buildWorld(scene,world,portals=[],evidence){
   }):null;
   buildings.forEach((feature,index)=>{
     const definition=findLandmark(world,feature);
-    const floor=terrain?Math.min(...feature.points.map(point=>terrain.at(...point))):0;
-    const blocker={kind:'building',id:feature.osmId??null,points:feature.points,minHeight:floor};
+    const placement=buildingPlacement(world,feature),{floor}=placement;
+    const record={feature,placement,height:buildingHeight(feature.tags)};
+    buildingPlacements.push(record);
+    const blocker={kind:'building',id:feature.osmId??null,points:feature.points,minHeight:terrain?placement.bottom:floor};
     if(world.mode==='demo'&&feature.visual==='park-cafe'){
       const cafe=buildDemoCafe(feature);
       scene.add(cafe.group);furniture.push(...cafe.obstacles);
       cameraObstacles.push({...blocker,height:cafe.ridge});
     }else if(definition){
       const model=definition.build(feature);
-      model.group.position.y+=floor;scene.add(model.group);
+      model.group.position.y+=floor;
+      addBuildingFoundation(model.group,feature.points,placement,world.steppedGrounding===false?null:terrain);scene.add(model.group);
+      record.height=model.height;
+      record.entrances=model.entrances;
+      captureBuildingBounds(model.group,record);
       landmarks.push({definition,model});
       evidence?.polygon(feature,model.roof);
       cameraObstacles.push({...blocker,height:model.height+floor});
       if(model.forecourt)clearings.push(model.forecourt);
     }else{
-      const mesh=streaming?.add(feature,index,floor)?null:makeBuilding(feature,index);
+      const mesh=streaming?.add(feature,index,placement)?null:makeBuilding(feature,index);
       if(mesh){
         mesh.position.y=floor;
+        addBuildingFoundation(mesh,feature.points,placement,world.steppedGrounding===false?null:terrain);
+        captureBuildingBounds(mesh,record);
         if(buildingBatches)buildingBatches.add(mesh,feature.points[0]);
         else {scene.add(mesh);evidence?.polygon(feature,mesh.children[1]);}
       }
@@ -136,6 +159,7 @@ export function buildWorld(scene,world,portals=[],evidence){
   });
   buildingBatches?.attach();
   if(world.entranceEnabled)furniture.push(...entranceGateBlocks(world));
+  if(terrain)furniture.push(...tennisBlocks(world),...trainFootprints(world));
   cameraObstacles.push(...furniture);
   const collisionFeatures=furniture.length?[...world.features,...furniture]:world.features;
   const canWalk=createWalkTest(collisionFeatures,world.bbox||[-1000,-1000,1000,1000]);
@@ -152,14 +176,14 @@ export function buildWorld(scene,world,portals=[],evidence){
   const setDetailFocus=real?(x,z)=>{
     detailFocus=[x,z];
     if(hill){
-      const near=Number.isFinite(x)&&Math.hypot(x+201,z-785)<(atHill?215:180);
+      const near=Number.isFinite(x)&&z>(atHill?145:185);
       if(near!==atHill){
         atHill=near;
         if(near)hillSky??=cherrySky();
         scene.background=near?hillSky:originalAtmosphere.background;
         scene.fog.color.set(near?0xc9d6d9:style.sky);
         scene.fog.near=near?125:originalAtmosphere.near;
-        scene.fog.far=near?490:originalAtmosphere.far;
+        scene.fog.far=near?620:originalAtmosphere.far;
       }
     }
     vegetation.setDetailFocus?.(x,z);
@@ -196,7 +220,7 @@ export function buildWorld(scene,world,portals=[],evidence){
       [px-1.8,pz-.125],[px+1.8,pz-.125],[px+1.8,pz+.125],[px-1.8,pz+.125],
     ]});
   }
-  return {terrain,streaming,get entranceArt(){return entrance?.evidence;},environment:environment.id,canWalk,cameraObstacles,cameraVolumes,setCameraOccluders,setQuality,setDetailFocus,vegetationMetrics,memoryPoints,animateMemoryMarkers,trees,
+  return {terrain,buildingPlacements,streaming,get entranceArt(){return entrance?.evidence;},environment:environment.id,canWalk,cameraObstacles,cameraVolumes,setCameraOccluders,setQuality,setDetailFocus,vegetationMetrics,memoryPoints,animateMemoryMarkers,trees,
     landmarks:landmarks.map(({definition:{build,...identity}})=>identity),
     counts:{paths:paths.length,buildings:buildings.length,water:waters.length,trees}};
 }
