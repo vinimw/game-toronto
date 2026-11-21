@@ -5,3 +5,9 @@
 A [documentação municipal de 2013, p. 12](https://www.toronto.ca/legdocs/mmis/2013/gm/bgrd/backgroundfile-63570.pdf#page=12) documenta a existência de uma entrada principal e pátios laterais. O [estabelecimento](https://www.grenadiercafe.net/) documenta a chegada pelo parque. O snapshot OSM fornece o perímetro, mas não oferece uma soleira georreferenciada.
 
 Na V2 a fachada gerava duas portas por simetria. O painel oeste em E=-92,645 m, Z=771,12 m tinha 0,407 m de desnível medido. Sua condição de porta pública nessa posição não tem suporte cartográfico ou fotográfico verificável. Ele passa a ser uma janela. A porta sul do modelo representa a chegada externa estilizada. O jogo permite aproximar-se da soleira e preserva a colisão da fachada. O briefing não exige um interior jogável. O teste registra separadamente a distância efetivamente alcançada, o desnível e a ausência de passagem para o interior.
+
+## Direção dos corredores
+
+A entrada norte preserva portal e eixo OSM. Grupos de maple e oak com GLBs autorais introduzem variação de silhueta e escala entre o portão e as quadras. A vegetação mais baixa acompanha esses grupos e deixa livres as superfícies esportivas. Em West Road os grupos verdes criam contraste com as copas já floridas do Cherry Hill, com repetição menor entre os setores e um grupo adicional na aproximação ao café. A variação de cor do gramado e dos caminhos opera em metros no shader, sobre as superfícies existentes. Os tufos usam um lote PBR fosco por setor e não alteram a malha do HRDEM. As posições de vegetação são composição artística, com afastamento das vias e exclusão de edifícios, água e quadras. Os modelos e suas licenças já constam em [asset-licenses.md](asset-licenses.md).
+
+As fotos municipais são referência. Este passe reutiliza os cercamentos e mobiliário existentes. Os contornos de esporte e as marcas existentes continuam com a distinção entre área mapeada e detalhe ilustrativo.

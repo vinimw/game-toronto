@@ -1,6 +1,6 @@
 // Shared world-metre material variation. No textures or extra render passes.
-export function parkSurfaceFinish(material,kind){
-  material.customProgramCacheKey=()=>`park-surface-${kind}`;
+export function parkSurfaceFinish(material,kind,expanded=false){
+  material.customProgramCacheKey=()=>`park-surface-${kind}-${expanded}`;
   material.onBeforeCompile=shader=>{
     shader.vertexShader='varying vec3 parkSurfacePosition;\n'+shader.vertexShader.replace(
       '#include <begin_vertex>','#include <begin_vertex>\nparkSurfacePosition=(modelMatrix*vec4(transformed,1.)).xyz;');
@@ -20,6 +20,22 @@ export function parkSurfaceFinish(material,kind){
       float broad=parkNoise(p*.057)*.7+parkNoise(p*.42)*.3;
       float grain=(parkNoise(p*5.3)-.5)*(1.-smoothstep(.05,.28,length(fwidth(p))));
       diffuseColor.rgb*=.91+broad*.17+grain*.12;
+      ${expanded?`
+      float north=1.-smoothstep(95.,160.,abs(p.x+30.));
+      north*=smoothstep(-140.,-115.,p.y)*(1.-smoothstep(250.,345.,p.y));
+      float west=(1.-smoothstep(40.,112.,abs(p.x+145.)))
+        *smoothstep(465.,545.,p.y)*(1.-smoothstep(785.,840.,p.y));
+      float corridor=max(north,west);
+      float mottling=parkNoise(p*.16)*.62+parkNoise(p*.78)*.38;
+      ${kind==='ground'?`
+        vec3 spring=mix(vec3(.73,.86,.66),vec3(1.09,1.12,.88),smoothstep(.22,.79,mottling));
+        diffuseColor.rgb*=mix(vec3(1.),spring+grain*.26,corridor*.92);
+      `:`
+        float wear=parkNoise(p*1.9)-.5;
+        vec3 aggregate=mix(vec3(.74,.77,.69),vec3(1.13,1.11,1.04),mottling);
+        diffuseColor.rgb*=mix(vec3(1.),aggregate+(wear*.14+grain*.34),corridor);
+      `}
+      `:''}
       ${kind==='ground'?'diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*vec3(1.16,.86,.72),smoothstep(.66,.91,broad)*.53);':''}
     `);
   };

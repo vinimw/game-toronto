@@ -191,3 +191,9 @@ for(const [id,label,local,way,eye,look,profile] of [
   const view=terrainView(id,'Implantação V2 · '+label,local,way,eye,look,profile);
   points.push(view,{...view,id:id+'-baseline',label:'Implantação V1 · '+label,foundationV1:true});
 }
+
+points.push(
+  terrainView('93-milestone-sports-balanced','Percurso norte · chegada às quadras em Balanced',[28.69,184.12],806985059,[-4,2.6,-5],[12,1,8],'mobile'),
+  terrainView('94-milestone-west-road','West Road · entrada no corredor',[-164,530],174188399,[4,2.8,-5],[-2,1.3,14]),
+  terrainView('90-milestone-cafe-access','Grenadier Café · aproximação à soleira exterior',[-74.5,779],125699284,[2,1.8,3],[.55,1,-3.15]),
+);
